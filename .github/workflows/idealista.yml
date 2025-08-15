@@ -1,8 +1,8 @@
-name: Idealista Automation
+name: Idealista Automation Test
 
 on:
   schedule:
-    - cron: '50 16 * * *'  # Se ejecuta a las 18:25 UTC
+    - cron: '2 17 * * *'  # Hoy a las 17:02 UTC (18:02 Madrid)
   workflow_dispatch:  # Permite ejecutar manualmente
 
 jobs:
