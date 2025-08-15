@@ -187,7 +187,7 @@ def main():
 
     fecha_hoy = datetime.now().strftime("%Y-%m-%d")
     # ⚡ Solo 1 barrio para pruebas
-    seleccionados = random.sample(list(barrios.keys()), 1)
+    seleccionados = random.sample(list(barrios.keys()), 20)
     print(f"🏘️ Barrios seleccionados: {seleccionados}")
 
     for barrio in seleccionados:
