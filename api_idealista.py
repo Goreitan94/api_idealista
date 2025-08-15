@@ -1,3 +1,4 @@
+import os
 import base64
 import requests
 import pandas as pd
@@ -8,12 +9,12 @@ import urllib.parse
 import random
 
 # ------------------------------------------------------------------------------
-TENANT_ID = "f96963b2-73d1-424b-8764-bfe8558a9d1a"
-CLIENT_ID = "46aaa258-c22d-4bdd-9f6a-c40a7f4e8ef9"
-CLIENT_SECRET = "oxp8Q~_reaSUyi2ktRQubDKrp9sBJNizWaeS4cqx"
-
-IDEALISTA_API_KEY = 'ncmntr0w5pw4g7ik0qmqi24ikwylvb5f'
-IDEALISTA_SECRET = '3qzOmZHWj8iT'
+# Usar variables de entorno en lugar de credenciales en el código
+TENANT_ID = os.getenv("TENANT_ID")
+CLIENT_ID = os.getenv("CLIENT_ID")
+CLIENT_SECRET = os.getenv("CLIENT_SECRET")
+IDEALISTA_API_KEY = os.getenv("IDEALISTA_API_KEY")
+IDEALISTA_SECRET = os.getenv("IDEALISTA_SECRET")
 
 barrios = {
     "Palomeras sureste": "40.387095,-3.639793",
@@ -185,7 +186,8 @@ def main():
         return
 
     fecha_hoy = datetime.now().strftime("%Y-%m-%d")
-    seleccionados = random.sample(list(barrios.keys()), 20)
+    # ⚡ Solo 1 barrio para pruebas
+    seleccionados = random.sample(list(barrios.keys()), 1)
     print(f"🏘️ Barrios seleccionados: {seleccionados}")
 
     for barrio in seleccionados:
