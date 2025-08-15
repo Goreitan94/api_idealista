@@ -2,7 +2,7 @@ name: Idealista Automation
 
 on:
   schedule:
-    - cron: '0 9 * * FRI'  # Todos los viernes a las 9:00 AM
+    - cron: '25 18 * * *'  # Se ejecuta a las 18:25 UTC
   workflow_dispatch:  # Permite ejecutar manualmente
 
 jobs:
