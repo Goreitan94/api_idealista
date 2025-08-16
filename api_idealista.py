@@ -8,6 +8,11 @@ from fuzzywuzzy import process
 import urllib.parse
 import random
 
+
+# --- OUTPUT (para que Actions lo publique) ---
+OUTPUT_FOLDER = os.environ.get("OUTPUT_FOLDER", "output_html")
+os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+
 # ------------------------------------------------------------------------------
 # Usar variables de entorno en lugar de credenciales en el código
 TENANT_ID = os.getenv("TENANT_ID")
