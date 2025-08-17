@@ -1,0 +1,38 @@
+# 📊 Informe Interactivo de Idealista
+
+Este repositorio contiene la automatización para:
+- Obtener datos de Idealista mediante su API.
+- Generar un **informe interactivo en HTML** con gráficos y tablas.
+- Publicar el informe automáticamente en **GitHub Pages** cada viernes a las 09:15 (hora de Madrid).
+
+---
+
+## 🌐 Acceso al informe
+
+👉 [Ver informe interactivo en vivo](https://Goreitan94.github.io/api_idealista/)
+
+*(El link se actualiza automáticamente con los últimos datos cada semana.)*
+
+---
+
+## ⚙️ Automatización
+
+- **Scripts principales**:
+  - `api_idealista.py`: Descarga y guarda los datos en Excel desde Idealista.
+  - `informe_semanal.py`: Genera el informe interactivo (HTML) con gráficos dinámicos (Plotly).
+- **Workflows de GitHub Actions**:
+  - `idealista.yml`: Corre el script de descarga de datos.
+  - `informe.yml`: Genera y despliega el informe en GitHub Pages.
+
+---
+
+## 📅 Frecuencia
+
+El informe se actualiza automáticamente todos los **viernes a las 09:15 (hora Madrid)** gracias a GitHub Actions.
+
+---
+
+## ✨ Tecnologías utilizadas
+- Python (requests, pandas, numpy, fuzzywuzzy, openpyxl, plotly)
+- GitHub Actions (automatización y despliegue)
+- GitHub Pages (hosting del informe interactivo)
