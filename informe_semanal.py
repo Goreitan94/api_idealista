@@ -1,20 +1,58 @@
 import os
 import re
+import requests
 import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
+from io import BytesIO
 
 # ==============================
 # Config
 # ==============================
-BASE_FOLDER = "/Users/eitangorenberg/Library/CloudStorage/OneDrive-UrbenEye/Idealista API (Datos)/Datos"
+TENANT_ID = os.getenv("TENANT_ID")
+CLIENT_ID = os.getenv("CLIENT_ID")
+CLIENT_SECRET = os.getenv("CLIENT_SECRET")
+
+BASE_FOLDER = "/Idealista API (Datos)/Datos"   # carpeta en OneDrive
 TEMPLATE = "plotly_white"
 PALETTE = px.colors.qualitative.Prism  # colores vivos y variados
 
 # ==============================
-# Utilidades
+# OneDrive Helpers
+# ==============================
+def get_onedrive_token():
+    token_url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
+    data = {
+        "grant_type": "client_credentials",
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET,
+        "scope": "https://graph.microsoft.com/.default"
+    }
+    response = requests.post(token_url, data=data)
+    token_data = response.json()
+    if "access_token" in token_data:
+        return token_data["access_token"]
+    else:
+        raise RuntimeError(f"No se pudo obtener token: {token_data}")
+
+def list_folders(path, access_token):
+    url = f"https://graph.microsoft.com/v1.0/users/eitang@urbeneye.com/drive/root:{path}:/children"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    resp = requests.get(url, headers=headers)
+    resp.raise_for_status()
+    return resp.json().get("value", [])
+
+def download_excel(path, access_token):
+    url = f"https://graph.microsoft.com/v1.0/users/eitang@urbeneye.com/drive/root:{path}:/content"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    resp = requests.get(url, headers=headers)
+    resp.raise_for_status()
+    return pd.read_excel(BytesIO(resp.content))
+
+# ==============================
+# Utils
 # ==============================
 def es_fecha(nombre: str) -> bool:
     try:
@@ -22,59 +60,6 @@ def es_fecha(nombre: str) -> bool:
         return True
     except ValueError:
         return False
-
-def get_latest_folder(base_folder: str) -> str | None:
-    folders = [f for f in os.listdir(base_folder)
-               if os.path.isdir(os.path.join(base_folder, f)) and es_fecha(f)]
-    if not folders:
-        print("❌ No hay carpetas con fecha en formato YYYY-MM-DD.")
-        return None
-    folders.sort(reverse=True)
-    path = os.path.join(base_folder, folders[0])
-    print(f"📁 Carpeta elegida: {path}")
-    return path
-
-def cargar_excel(path: str) -> pd.DataFrame | None:
-    try:
-        df = pd.read_excel(path)
-        # limpieza básica
-        if 'size' in df.columns:
-            df = df[df['size'] > 0].copy()
-        if 'price' in df.columns:
-            df = df[df['price'] > 0].copy()
-
-        # €/m2
-        if 'size' in df.columns and 'price' in df.columns:
-            df['price_per_m2'] = df['price'] / df['size'].replace(0, np.nan)
-        else:
-            df['price_per_m2'] = np.nan
-
-        # etiquetas categóricas limpias
-        if 'exterior' in df.columns:
-            df['exterior_label'] = (
-                df['exterior'].astype(str).str.lower().fillna('')
-                .map(lambda x: 'Exterior' if x == 'true' else 'Interior')
-            )
-        if 'hasLift' in df.columns:
-            df['lift_label'] = df['hasLift'].map(lambda x: 'Con Ascensor' if bool(x) else 'Sin Ascensor')
-        if 'hasParking' in df.columns:
-            df['parking_label'] = df['hasParking'].map(lambda x: 'Con Parking' if bool(x) else 'Sin Parking')
-
-        # rooms a int cuando tenga sentido
-        if 'rooms' in df.columns:
-            with pd.option_context('mode.use_inf_as_na', True):
-                df['rooms'] = pd.to_numeric(df['rooms'], errors='coerce')
-
-        return df
-    except Exception as e:
-        print(f"⚠️ Error leyendo {path}: {e}")
-        return None
-
-def slugify(text: str) -> str:
-    text = text.lower().strip()
-    text = re.sub(r"\s+", "-", text)
-    text = re.sub(r"[^a-z0-9\-]", "", text)
-    return text
 
 def fmt_eur(x):
     try:
@@ -88,7 +73,7 @@ def fig_html(fig) -> str:
     })
 
 # ==============================
-# Gráficos helpers (per barrio)
+# Gráficos helpers
 # ==============================
 def histograma(df, col, title, color):
     if col not in df.columns or df[col].dropna().empty:
@@ -115,33 +100,10 @@ def scatter_precio_size(df, color):
                                  name="Tendencia", line=dict(width=2)))
     return fig_html(fig)
 
-def tabla(df, title, sort_col, ascending, cols_order):
-    usable = df.copy()
-    for c in ["price","size","price_per_m2"]:
-        if c in usable.columns:
-            usable[c] = usable[c].round(0)
-    usable = usable.sort_values(sort_col, ascending=ascending).head(10)
-    usable = usable[[c for c in cols_order if c in usable.columns]]
-    if usable.empty:
-        return ""
-    def col_vals(c):
-        vals = usable[c].tolist()
-        if c == "price":       vals = [fmt_eur(v) for v in vals]
-        if c == "price_per_m2": vals = [fmt_eur(v)+"/m²" for v in vals]
-        if c == "size":        vals = [f"{int(v):,} m²".replace(",", ".") for v in vals]
-        return vals
-    header = [c.replace("_"," ").title() for c in usable.columns]
-    cells = [col_vals(c) for c in usable.columns]
-    fig = go.Figure(data=[go.Table(
-        header=dict(values=header, fill_color="#f1f3f5", align="center"),
-        cells=dict(values=cells, align="center")
-    )])
-    return fig_html(fig)
-
 # ==============================
-# Informe (un solo HTML)
+# Informe
 # ==============================
-def generar_informe_global(all_dfs, barrios, fecha, output_folder):
+def generar_informe_global(all_dfs, barrios, fecha):
     parts = [f"""
 <!doctype html>
 <html lang="es">
@@ -166,9 +128,8 @@ def generar_informe_global(all_dfs, barrios, fecha, output_folder):
         df_all = pd.concat(df_all, ignore_index=True)
     else:
         parts.append("<p>No hay datos.</p></div></body></html>")
-        return
+        return "".join(parts)
 
-    # Un ejemplo de gráfico global
     if "price_per_m2" in df_all.columns:
         m_ppm2 = df_all.groupby("barrio")["price_per_m2"].mean().reset_index()
         fig = px.bar(m_ppm2, x="barrio", y="price_per_m2", template=TEMPLATE,
@@ -176,46 +137,56 @@ def generar_informe_global(all_dfs, barrios, fecha, output_folder):
                      color_discrete_sequence=PALETTE)
         parts.append(fig_html(fig))
 
-    # ---- Cierre ----
     parts.append("</div></body></html>")
-    full_html = "".join(parts)
-
-    # Guardar en OneDrive
-    out_path_data = os.path.join(output_folder, f"informe_interactivo_{fecha}.html")
-    with open(out_path_data, "w", encoding="utf-8") as f:
-        f.write(full_html)
-    print(f"✅ Informe global guardado en datos: {out_path_data}")
-
-    # Guardar en output_html (para GitHub Pages)
-    out_folder_pages = os.environ.get("OUTPUT_FOLDER", "output_html")
-    os.makedirs(out_folder_pages, exist_ok=True)
-    out_path_pages = os.path.join(out_folder_pages, "index.html")
-    with open(out_path_pages, "w", encoding="utf-8") as f:
-        f.write(full_html)
-    print(f"✅ Informe global guardado para GitHub Pages: {out_path_pages}")
+    return "".join(parts)
 
 # ==============================
 # Main
 # ==============================
 def main():
-    carpeta = get_latest_folder(BASE_FOLDER)
-    if not carpeta:
+    token = get_onedrive_token()
+
+    # 1. listar carpetas en BASE_FOLDER
+    folders = list_folders(BASE_FOLDER, token)
+    fechas = [f["name"] for f in folders if f.get("folder") and es_fecha(f["name"])]
+    if not fechas:
+        print("❌ No hay carpetas con formato fecha.")
         return
-    fecha = os.path.basename(carpeta)
-    archivos = [f for f in os.listdir(carpeta) if f.lower().endswith(".xlsx")]
-    if not archivos:
-        print("❌ No hay archivos .xlsx en la carpeta.")
+    fecha = sorted(fechas, reverse=True)[0]
+    print(f"📁 Carpeta más reciente: {fecha}")
+
+    # 2. listar xlsx dentro de esa carpeta
+    carpeta_path = f"{BASE_FOLDER}/{fecha}"
+    archivos = list_folders(carpeta_path, token)
+    archivos_xlsx = [a for a in archivos if a["name"].lower().endswith(".xlsx")]
+    if not archivos_xlsx:
+        print("❌ No hay archivos Excel en la carpeta.")
         return
 
     barrios, dfs = [], []
-    for nombre in sorted(archivos):
-        barrio = os.path.splitext(nombre)[0]
-        path = os.path.join(carpeta, nombre)
-        df = cargar_excel(path)
-        barrios.append(barrio)
-        dfs.append(df)
+    for a in archivos_xlsx:
+        barrio = os.path.splitext(a["name"])[0]
+        file_path = f"{carpeta_path}/{a['name']}"
+        try:
+            df = download_excel(file_path, token)
+            if 'size' in df.columns and 'price' in df.columns:
+                df = df[(df['size'] > 0) & (df['price'] > 0)].copy()
+                df['price_per_m2'] = df['price'] / df['size'].replace(0, np.nan)
+            barrios.append(barrio)
+            dfs.append(df)
+        except Exception as e:
+            print(f"⚠️ Error en {a['name']}: {e}")
 
-    generar_informe_global(dfs, barrios, fecha, carpeta)
+    # 3. generar informe
+    full_html = generar_informe_global(dfs, barrios, fecha)
+
+    # 4. guardar para GitHub Pages
+    out_folder_pages = os.environ.get("OUTPUT_FOLDER", "output_html")
+    os.makedirs(out_folder_pages, exist_ok=True)
+    out_path_pages = os.path.join(out_folder_pages, "index.html")
+    with open(out_path_pages, "w", encoding="utf-8") as f:
+        f.write(full_html)
+    print(f"✅ Informe global guardado en {out_path_pages}")
 
 if __name__ == "__main__":
     main()
