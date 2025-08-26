@@ -33,13 +33,25 @@ async function main() {
     console.log(`Se encontraron ${emails.length} correos para procesar.`);
 
     for (const email of emails) {
+      // --- MEJORA 1: Filtrar solo correos de "Nuevo mensaje" ---
+      if (!email.subject.includes("Nuevo mensaje de")) {
+        console.log(`Ignorando correo de respuesta/seguimiento: ${email.subject}`);
+        await markEmailAsRead(accessToken, email.id); // Lo marcamos como leído para no volver a verlo
+        continue; // Pasamos al siguiente correo
+      }
+
       console.log(`Procesando correo con asunto: ${email.subject}`);
       const parsedData = parseEmail(email);
       
       console.log("Datos extraídos:", JSON.stringify(parsedData, null, 2));
-      await createAirtableRecord(parsedData);
+      
+      // Solo crear el registro si tenemos al menos un email o un teléfono
+      if (parsedData.email_cliente !== "-" || parsedData.telefono !== "-") {
+        await createAirtableRecord(parsedData);
+      } else {
+        console.log("No se extrajo información de contacto válida. No se creará registro en Airtable.");
+      }
 
-      // Marcar el correo como leído para no procesarlo de nuevo
       await markEmailAsRead(accessToken, email.id);
       console.log(`Correo ${email.id} marcado como leído.`);
     }
@@ -97,12 +109,13 @@ function parseEmail(json) {
 
   let matchEmail = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}/);
   if (matchEmail) email = matchEmail[0];
+  
+  // --- MEJORA 2: Expresión regular de teléfono más precisa ---
+  let matchTel = text.match(/(?:[+]?\d{1,3}[-\s.]?)?\(?\d{3}\)?[-\s.]?\d{3}[-\s.]?\d{3,4}/);
+  if (matchTel) telefono = matchTel[0].replace(/[\s().-]/g, ''); // Limpiamos el número
 
-  let matchTel = text.match(/(\+?\d[\d\s()-.]{7,}\d)/);
-  if (matchTel) telefono = matchTel[0].trim().replace(/\s/g, '');
-
-  let matchRef = subject.match(/ref:\s*([A-Za-z0-9]+)/i) || text.match(/Ref\.?\s*([A-Za-z0-9]+)/i);
-  if (matchRef) referencia = matchRef[1];
+  let matchRef = subject.match(/ref\.?\s*interna\s*([^,]+)/i) || subject.match(/ref[\.:]\s*([A-Za-z0-9\s]+)/i);
+  if (matchRef) referencia = matchRef[1].trim();
 
   let matchCodigo = text.match(/C[oó]digo del anuncio:\s*(\d+)/i);
   if (matchCodigo) {
@@ -111,19 +124,13 @@ function parseEmail(json) {
     enlace = "-";
   }
 
-  let lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 0);
-  let indexEmail = email ? lines.findIndex(l => l.includes(email)) : -1;
-  let indexTel = telefono ? lines.findIndex(l => l.replace(/\s/g, '').includes(telefono)) : -1;
-  let validIndices = [indexEmail, indexTel].filter(i => i > 0);
-
-  if(validIndices.length > 0) {
-    let idx = Math.min(...validIndices);
-    if (idx > 0) {
-      nombre = lines[idx - 1];
-    }
+  // --- MEJORA 3: Extracción de nombre más fiable ---
+  let matchNombre = subject.match(/Nuevo mensaje de (.+?) sobre/i);
+  if(matchNombre) {
+      nombre = matchNombre[1].trim();
   }
 
-  let matchDireccion = subject.match(/sobre tu inmueble, con ref: [A-Za-z0-9]+, (.+)$/i);
+  let matchDireccion = subject.match(/sobre tu inmueble, con ref\.? interna [^,]+, (.+)$/i) || subject.match(/sobre tu inmueble, (.+)$/i);
   let direccion = matchDireccion ? matchDireccion[1] : "";
 
   return {
