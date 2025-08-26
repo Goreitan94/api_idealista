@@ -1,0 +1,166 @@
+const axios = require('axios');
+
+// --- CONFIGURACIÓN ---
+const {
+  AIRTABLE_BASE_ID,
+  AIRTABLE_TABLE_ID,
+  AIRTABLE_TOKEN,
+  OUTLOOK_CLIENT_ID,
+  OUTLOOK_CLIENT_SECRET,
+  OUTLOOK_TENANT_ID,
+  OUTLOOK_USER_EMAIL
+} = process.env;
+
+const SENDER_FILTER = "reply@idealista.com";
+
+// --- FUNCIÓN PRINCIPAL ---
+async function main() {
+  console.log("Iniciando la ejecución del script...");
+
+  try {
+    const accessToken = await getMicrosoftGraphToken();
+    if (!accessToken) {
+      console.log("No se pudo obtener el token de acceso. Abortando.");
+      return;
+    }
+    console.log("Token de acceso obtenido correctamente.");
+
+    const emails = await getUnreadEmails(accessToken);
+    if (emails.length === 0) {
+      console.log("No se encontraron correos nuevos de Idealista.");
+      return;
+    }
+    console.log(`Se encontraron ${emails.length} correos para procesar.`);
+
+    for (const email of emails) {
+      console.log(`Procesando correo con asunto: ${email.subject}`);
+      const parsedData = parseEmail(email);
+      
+      console.log("Datos extraídos:", JSON.stringify(parsedData, null, 2));
+      await createAirtableRecord(parsedData);
+
+      // Marcar el correo como leído para no procesarlo de nuevo
+      await markEmailAsRead(accessToken, email.id);
+      console.log(`Correo ${email.id} marcado como leído.`);
+    }
+
+  } catch (error) {
+    console.error("Ocurrió un error en el flujo principal:", error.message);
+    if (error.response) {
+        console.error("Detalles del error:", JSON.stringify(error.response.data, null, 2));
+    }
+  }
+}
+
+// --- FUNCIONES DE MICROSOFT GRAPH (OUTLOOK) ---
+
+async function getMicrosoftGraphToken() {
+  const url = `https://login.microsoftonline.com/${OUTLOOK_TENANT_ID}/oauth2/v2.0/token`;
+  const params = new URLSearchParams();
+  params.append('client_id', OUTLOOK_CLIENT_ID);
+  params.append('scope', 'https://graph.microsoft.com/.default');
+  params.append('client_secret', OUTLOOK_CLIENT_SECRET);
+  params.append('grant_type', 'client_credentials');
+
+  const response = await axios.post(url, params, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+  });
+  return response.data.access_token;
+}
+
+async function getUnreadEmails(token) {
+  const url = `https://graph.microsoft.com/v1.0/users/${OUTLOOK_USER_EMAIL}/messages?$filter=isRead eq false and from/emailAddress/address eq '${SENDER_FILTER}'&$select=id,subject,body,from`;
+  
+  const response = await axios.get(url, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  return response.data.value; // Array de correos
+}
+
+async function markEmailAsRead(token, messageId) {
+    const url = `https://graph.microsoft.com/v1.0/users/${OUTLOOK_USER_EMAIL}/messages/${messageId}`;
+    await axios.patch(url, { isRead: true }, {
+        headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        }
+    });
+}
+
+// --- FUNCIÓN DE PARSEO (Tu lógica de n8n) ---
+
+function parseEmail(json) {
+  let html = json["body"]["content"] || "";
+  let subject = json["subject"] || "";
+  let text = html.replace(/<[^>]*>/g, "\n").replace(/\n+/g, "\n").trim();
+  let nombre = "", email = "", telefono = "", referencia = "", enlace = "", mensaje = text;
+
+  let matchEmail = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}/);
+  if (matchEmail) email = matchEmail[0];
+
+  let matchTel = text.match(/(\+?\d[\d\s()-.]{7,}\d)/);
+  if (matchTel) telefono = matchTel[0].trim().replace(/\s/g, '');
+
+  let matchRef = subject.match(/ref:\s*([A-Za-z0-9]+)/i) || text.match(/Ref\.?\s*([A-Za-z0-9]+)/i);
+  if (matchRef) referencia = matchRef[1];
+
+  let matchCodigo = text.match(/C[oó]digo del anuncio:\s*(\d+)/i);
+  if (matchCodigo) {
+    enlace = `https://www.idealista.com/inmueble/${matchCodigo[1]}`;
+  } else {
+    enlace = "-";
+  }
+
+  let lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+  let indexEmail = email ? lines.findIndex(l => l.includes(email)) : -1;
+  let indexTel = telefono ? lines.findIndex(l => l.replace(/\s/g, '').includes(telefono)) : -1;
+  let validIndices = [indexEmail, indexTel].filter(i => i > 0);
+
+  if(validIndices.length > 0) {
+    let idx = Math.min(...validIndices);
+    if (idx > 0) {
+      nombre = lines[idx - 1];
+    }
+  }
+
+  let matchDireccion = subject.match(/sobre tu inmueble, con ref: [A-Za-z0-9]+, (.+)$/i);
+  let direccion = matchDireccion ? matchDireccion[1] : "";
+
+  return {
+    nombre_cliente: nombre || "-",
+    email_cliente: email || "-",
+    telefono: telefono || "-",
+    referencia: referencia || "-",
+    enlace_inmueble: enlace,
+    direccion_inmueble: direccion || "-",
+    mensaje: mensaje
+  };
+}
+
+// --- FUNCIÓN DE AIRTABLE ---
+
+async function createAirtableRecord(data) {
+  const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_ID}`;
+  const payload = {
+    records: [{
+      fields: {
+        "Lead Nane": data.nombre_cliente,
+        "Email": data.email_cliente,
+        "Telefono": data.telefono,
+        "Mensaje Idealista": data.mensaje,
+        "id test ": data.referencia
+      }
+    }]
+  };
+
+  await axios.post(url, payload, {
+    headers: {
+      'Authorization': `Bearer ${AIRTABLE_TOKEN}`,
+      'Content-Type': 'application/json'
+    }
+  });
+  console.log(`Registro creado en Airtable para: ${data.nombre_cliente}`);
+}
+
+// --- INICIAR EJECUCIÓN ---
+main();
