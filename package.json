@@ -1,0 +1,12 @@
+{
+  "name": "automatizacion-idealista",
+  "version": "1.0.0",
+  "description": "Procesa correos de idealista y los añade a Airtable.",
+  "main": "process-emails.js",
+  "scripts": {
+    "start": "node process-emails.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.0"
+  }
+}
