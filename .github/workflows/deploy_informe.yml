@@ -2,8 +2,8 @@ name: Deploy Informe Interactivo
 
 on:
   schedule:
-    - cron: '15 7 * * FRI'  # Verano (07:15 UTC → 09:15 Madrid)
-    - cron: '15 8 * * FRI'  # Invierno (08:15 UTC → 09:15 Madrid)
+    - cron: '15 7 * * FRI'    # Verano (07:15 UTC → 09:15 Madrid)
+    - cron: '15 8 * * FRI'    # Invierno (08:15 UTC → 09:15 Madrid)
   workflow_dispatch:        # Permite ejecutarlo manualmente también
 
 permissions:
@@ -25,7 +25,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pandas numpy openpyxl plotly requests fuzzywuzzy python-Levenshtein
+          pip install pandas numpy openpyxl plotly requests fuzzywuzzy python-Levenshtein statsmodels
 
       - name: Generar informe interactivo
         env:
