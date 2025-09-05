@@ -15,8 +15,8 @@ TENANT_ID = os.getenv("TENANT_ID")
 CLIENT_ID = os.getenv("CLIENT_ID")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 
-BASE_FOLDER = "/Idealista API (Datos)/Datos" # Carpeta raíz en OneDrive
-TEMPLATE = "plotly_dark" # Cambiado a oscuro para coincidir con tu CSS
+BASE_FOLDER = "/Idealista API (Datos)/Datos"
+TEMPLATE = "plotly_dark"
 PALETTE = px.colors.qualitative.Plotly
 
 # ==============================
@@ -69,7 +69,6 @@ def fmt_eur(x):
         return ""
 
 def fig_html(fig) -> str:
-    # Se usa 'full_html=False' para incrustar, y se desactiva el logo y botones no deseados
     return fig.to_html(full_html=False, include_plotlyjs=False, config={"displaylogo": False, "modeBarButtonsToRemove": ["select", "lasso2d"]})
 
 # ==============================
@@ -167,37 +166,37 @@ def bar_chart_lift_impact(df, title, color_lift_true='#6c9ef8', color_lift_false
 
 def tabla(df, title, sort_col, ascending, cols_order):
     usable = df.copy().sort_values(sort_col, ascending=ascending).head(10)
-    # Aseguramos que 'url' esté al final si existe
     if 'url' in df.columns and 'url' not in cols_order:
         cols_order.append('url')
 
     usable = usable[[c for c in cols_order if c in usable.columns]]
-    if usable.empty: return ""
+    if usable.empty:
+        return ""
 
-    header = [c.replace("_"," ").title() for c in usable.columns]
+    header = [c.replace("_", " ").title() for c in usable.columns]
     if 'Url' in header:
         header[header.index('Url')] = "Anuncio"
 
     cells_values = []
     for c in usable.columns:
-        vals = usable[c].copy()
         if c == "price":
-            vals = vals.apply(fmt_eur)
+            vals = usable[c].apply(fmt_eur).tolist()
         elif c == "price_per_m2":
-            vals = vals.apply(lambda v: f"{fmt_eur(v)}/m²")
+            vals = usable[c].apply(lambda v: f"{fmt_eur(v)}/m²").tolist()
         elif c == "size":
-            vals = vals.apply(lambda v: f"{int(v):,} m²".replace(",", "."))
+            vals = usable[c].apply(lambda v: f"{int(v):,} m²".replace(",", ".")).tolist()
         elif c == 'url':
-            # Genera un HTML con el enlace para la celda
-            # Nota: go.Table puede no renderizar HTML complejo, pero funciona para enlaces simples.
-            vals = [f'<a href="{url}" target="_blank">Ver Anuncio</a>' for url in vals]
-        cells_values.append(vals.tolist())
+            vals = [f'<a href="{url}" target="_blank">Ver Anuncio</a>' for url in usable[c]]
+        else:
+            vals = usable[c].tolist()
+        
+        cells_values.append(vals)
 
     fig = go.Figure(data=[go.Table(
         header=dict(values=header, fill_color="#1a2445", align="center", font=dict(color='white')),
-        cells=dict(values=cells_values, align="center", fill_color= '#121a33', font=dict(color='white'))
+        cells=dict(values=cells_values, align="center", fill_color='#121a33', font=dict(color='white'))
     )])
-    fig.update_layout(template=TEMPLATE, title=title, margin=dict(l=10,r=10,t=40,b=10))
+    fig.update_layout(template=TEMPLATE, title=title, margin=dict(l=10, r=10, t=40, b=10))
     return fig_html(fig)
 
 # ==============================
@@ -281,7 +280,6 @@ def main():
         try:
             print(f"📥 Descargando y procesando: {a['name']}")
             df = download_excel(file_path, token)
-            # Aplicar la limpieza avanzada de tu script local
             if 'size' in df.columns: df = df[df['size'] > 0].copy()
             if 'price' in df.columns: df = df[df['price'] > 0].copy()
             if 'size' in df.columns and 'price' in df.columns:
@@ -299,10 +297,8 @@ def main():
     print("📊 Generando informe HTML completo...")
     full_html = generar_informe_global(dfs, barrios, fecha)
 
-    # Guardado para GitHub Pages
     out_folder_pages = os.environ.get("OUTPUT_FOLDER", "output_html")
     os.makedirs(out_folder_pages, exist_ok=True)
-    # ¡Importante! El archivo debe llamarse index.html
     out_path_pages = os.path.join(out_folder_pages, "index.html")
     with open(out_path_pages, "w", encoding="utf-8") as f:
         f.write(full_html)
