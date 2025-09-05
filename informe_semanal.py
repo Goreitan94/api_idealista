@@ -15,7 +15,7 @@ TENANT_ID = os.getenv("TENANT_ID")
 CLIENT_ID = os.getenv("CLIENT_ID")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 
-BASE_FOLDER = "/Idealista API (Datos)/Datos"   # Carpeta raíz en OneDrive
+BASE_FOLDER = "/Idealista API (Datos)/Datos" # Carpeta raíz en OneDrive
 TEMPLATE = "plotly_dark"  # Cambiado a oscuro para coincidir con tu CSS
 PALETTE = px.colors.qualitative.Plotly
 
