@@ -114,6 +114,30 @@ def scatter_price_size_trend(df, title, color):
     )
     return fig_html(fig)
 
+def bar_chart_features(df, title, color):
+    if "exterior_label" not in df.columns or "lift_label" not in df.columns or df.empty:
+        return ""
+    df_grouped = df.groupby(['exterior_label', 'lift_label'])['price_per_m2'].mean().reset_index()
+    df_grouped['category'] = df_grouped['exterior_label'] + ' / ' + df_grouped['lift_label']
+    custom_order = ['Exterior / Con Ascensor', 'Exterior / Sin Ascensor', 'Interior / Con Ascensor', 'Interior / Sin Ascensor']
+    df_grouped['category'] = pd.Categorical(df_grouped['category'], categories=custom_order, ordered=True)
+    df_grouped = df_grouped.sort_values('category')
+    fig = px.bar(
+        df_grouped,
+        x="category",
+        y="price_per_m2",
+        title=title,
+        template=TEMPLATE,
+        color='exterior_label',
+        color_discrete_map={'Exterior': color, 'Interior': 'rgba(255,255,255,0.4)'}
+    )
+    fig.update_layout(
+        xaxis_title="",
+        yaxis_title="€/m² Medio",
+        legend_title_text="Tipo de Vivienda",
+    )
+    return fig_html(fig)
+
 def bar_chart_lift_impact(df, title, color_lift_true='#6c9ef8', color_lift_false='rgba(255,255,255,0.4)'):
     if "lift_label" not in df.columns or df["lift_label"].dropna().empty:
         return ""
@@ -140,7 +164,7 @@ def bar_chart_lift_impact(df, title, color_lift_true='#6c9ef8', color_lift_false
     fig.update_yaxes(range=[0, df_grouped["price_per_m2"].max() * 1.2])
     return fig_html(fig)
 
-def tabla(df, title, sort_col, ascending, cols_order):
+def tabla_html(df, title, sort_col, ascending, cols_order):
     usable = df.copy().sort_values(sort_col, ascending=ascending).head(10)
     if 'url' in df.columns and 'url' not in cols_order:
         cols_order.append('url')
@@ -149,31 +173,42 @@ def tabla(df, title, sort_col, ascending, cols_order):
     if usable.empty:
         return ""
 
-    header = [c.replace("_", " ").title() for c in usable.columns]
-    if 'Url' in header:
-        header[header.index('Url')] = "Anuncio"
+    header_html = "".join([f"<th>{c.replace('_', ' ').title().replace('Url', 'Anuncio')}</th>" for c in usable.columns])
+    
+    rows_html = ""
+    for index, row in usable.iterrows():
+        cells_html = ""
+        for c in usable.columns:
+            val = row[c]
+            if c == "price":
+                val = fmt_eur(val)
+            elif c == "price_per_m2":
+                val = f"{fmt_eur(val)}/m²"
+            elif c == "size":
+                val = f"{int(val):,} m²".replace(",", ".")
+            elif c == "url":
+                val = f"<a href='{val}' target='_blank'>Ver Anuncio</a>"
+            else:
+                val = str(val)
+            cells_html += f"<td>{val}</td>"
+        rows_html += f"<tr>{cells_html}</tr>"
 
-    cells_values = []
-    for c in usable.columns:
-        if c == "price":
-            vals = usable[c].apply(fmt_eur).tolist()
-        elif c == "price_per_m2":
-            vals = usable[c].apply(lambda v: f"{fmt_eur(v)}/m²").tolist()
-        elif c == "size":
-            vals = usable[c].apply(lambda v: f"{int(v):,} m²".replace(",", ".")).tolist()
-        elif c == 'url':
-            vals = [f'<a href="{url}" target="_blank">Ver Anuncio</a>' for url in usable[c]]
-        else:
-            vals = usable[c].tolist()
-        
-        cells_values.append(vals)
-
-    fig = go.Figure(data=[go.Table(
-        header=dict(values=header, fill_color="#1a2445", align="center", font=dict(color='white')),
-        cells=dict(values=cells_values, align="center", fill_color='#121a33', font=dict(color='white'))
-    )])
-    fig.update_layout(template=TEMPLATE, title=title, margin=dict(l=10, r=10, t=40, b=10))
-    return fig_html(fig)
+    html = f"""
+    <div style="background:transparent; padding:0; margin-bottom:14px;">
+        <h2 style="font-size:18px; text-align:center; margin:8px 6px 10px;">{title}</h2>
+        <div style="max-height: 400px; overflow-y: auto;">
+        <table style="width:100%; border-collapse:collapse; text-align:center;">
+            <thead>
+                <tr style="background-color:#1a2445; color:white;">{header_html}</tr>
+            </thead>
+            <tbody style="background-color:#121a33; color:white;">
+                {rows_html}
+            </tbody>
+        </table>
+        </div>
+    </div>
+    """
+    return html
 
 # ==============================
 # Generador de Informe
@@ -216,11 +251,12 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
         parts.append('</div><div class="grid grid-2">')
         parts.append(scatter_precio_size(df, color))
         parts.append(scatter_price_size_trend(df, "€/m² vs Tamaño: Tendencia no lineal", color))
+        parts.append(bar_chart_features(df, "€/m² Medio: Exterior vs Interior / Con vs Sin Ascensor", color))
         parts.append(bar_chart_lift_impact(df, "€/m² Medio: Con vs Sin Ascensor", color))
         parts.append('</div><div class="grid grid-2">')
         cols_order = ['price', 'size', 'price_per_m2', 'rooms', 'exterior_label', 'lift_label', 'url']
-        parts.append(tabla(df, "Top 10 — Más baratas (por €/m²)", "price_per_m2", True, cols_order))
-        parts.append(tabla(df, "Top 10 — Más caras (por €/m²)", "price_per_m2", False, cols_order))
+        parts.append(tabla_html(df, "Top 10 — Más baratas (por €/m²)", "price_per_m2", True, cols_order))
+        parts.append(tabla_html(df, "Top 10 — Más caras (por €/m²)", "price_per_m2", False, cols_order))
         parts.append('</div></div>')
         
     parts.append("</div></body></html>")
