@@ -114,30 +114,6 @@ def scatter_price_size_trend(df, title, color):
     )
     return fig_html(fig)
 
-def bar_chart_features(df, title, color):
-    if "exterior_label" not in df.columns or "lift_label" not in df.columns or df.empty:
-        return ""
-    df_grouped = df.groupby(['exterior_label', 'lift_label'])['price_per_m2'].mean().reset_index()
-    df_grouped['category'] = df_grouped['exterior_label'] + ' / ' + df_grouped['lift_label']
-    custom_order = ['Exterior / Con Ascensor', 'Exterior / Sin Ascensor', 'Interior / Con Ascensor', 'Interior / Sin Ascensor']
-    df_grouped['category'] = pd.Categorical(df_grouped['category'], categories=custom_order, ordered=True)
-    df_grouped = df_grouped.sort_values('category')
-    fig = px.bar(
-        df_grouped,
-        x="category",
-        y="price_per_m2",
-        title=title,
-        template=TEMPLATE,
-        color='exterior_label',
-        color_discrete_map={'Exterior': color, 'Interior': 'rgba(255,255,255,0.4)'}
-    )
-    fig.update_layout(
-        xaxis_title="",
-        yaxis_title="€/m² Medio",
-        legend_title_text="Tipo de Vivienda",
-    )
-    return fig_html(fig)
-
 def bar_chart_lift_impact(df, title, color_lift_true='#6c9ef8', color_lift_false='rgba(255,255,255,0.4)'):
     if "lift_label" not in df.columns or df["lift_label"].dropna().empty:
         return ""
@@ -204,7 +180,7 @@ def tabla(df, title, sort_col, ascending, cols_order):
 # ==============================
 def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fecha: str):
     parts = [f"""
-<!doctype html><html lang="es"><head><meta charset="utf-8" /><title>Informe Interactivo — {fecha}</title><meta name="viewport" content="width=device-width, initial-scale=1" /><script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script><style>:root{{--bg:#0b1020;--card:#121a33;--ink:#e6ecff;--muted:#a8b2d1;--accent:#6c9ef8;}}html,body{{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}} .wrap{{max-width:1200px;margin:40px auto;padding:0 16px;}} .hero{{background:radial-gradient(1200px 400px at 20% -20%,rgba(108,158,248,0.25),transparent),radial-gradient(1000px 500px at 120% 20%,rgba(255,122,89,0.20),transparent);border:1px solid rgba(255,255,255,0.06);border-radius:24px;padding:28px 28px 18px;margin-bottom:24px;box-shadow:0 20px 60px rgba(0,0,0,0.35),inset 0 1px 0 rgba(255,255,255,0.03);}} h1{{font-size:32px;margin:0 0 6px;}} .sub{{color:var(--muted);font-size:14px;}} .toc{{background:#0f1630;border:1px solid rgba(255,255,255,0.06);border-radius:14px;padding:14px 16px;margin:18px 0 28px;}} .toc h3{{margin:0 0 8px;font-size:15px;color:var(--muted);}} .toc a{{color:var(--ink);text-decoration:none;}} .toc a:hover{{color:var(--accent);}} .section{{background:var(--card);border:1px solid rgba(255,255,255,0.06);border-radius:18px;padding:14px;margin:14px 0 22px;}} .section > h2{{font-size:20px;margin:8px 6px 10px;}} .pill{{display:inline-block;font-size:12px;color:#081229;background:#cfe1ff;border-radius:999px;padding:2px 10px;margin-left:8px;}} .pill a{{color:#081229;text-decoration:none;}} .pill a:hover{{color:#004488;}} .grid{{display:grid;grid-template-columns:1fr;gap:14px;}} @media(min-width:900px){{.grid-2{{grid-template-columns:1fr 1fr;}} .grid-3{{grid-template-columns:1fr 1fr 1fr;}}}} .anchor{{scroll-margin-top:20px;}}</style></head><body><div class="wrap"><div class="hero"><h1>📊 Informe Interactivo — {fecha}</h1><div class="sub">Fuente: Idealista API | Generado Automáticamente</div></div>
+<!doctype html><html lang="es"><head><meta charset="utf-8" /><title>UrbenEye — Informe Interactivo — {fecha}</title><meta name="viewport" content="width=device-width, initial-scale=1" /><script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script><style>:root{{--bg:#0b1020;--card:#121a33;--ink:#e6ecff;--muted:#a8b2d1;--accent:#6c9ef8;}}html,body{{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}} .wrap{{max-width:1200px;margin:40px auto;padding:0 16px;}} .hero{{background:radial-gradient(1200px 400px at 20% -20%,rgba(108,158,248,0.25),transparent),radial-gradient(1000px 500px at 120% 20%,rgba(255,122,89,0.20),transparent);border:1px solid rgba(255,255,255,0.06);border-radius:24px;padding:28px 28px 18px;margin-bottom:24px;box-shadow:0 20px 60px rgba(0,0,0,0.35),inset 0 1px 0 rgba(255,255,255,0.03);}} h1{{font-size:32px;margin:0 0 6px;}} .sub{{color:var(--muted);font-size:14px;}} .toc{{background:#0f1630;border:1px solid rgba(255,255,255,0.06);border-radius:14px;padding:14px 16px;margin:18px 0 28px;}} .toc h3{{margin:0 0 8px;font-size:15px;color:var(--muted);}} .toc a{{color:var(--ink);text-decoration:none;}} .toc a:hover{{color:var(--accent);}} .section{{background:var(--card);border:1px solid rgba(255,255,255,0.06);border-radius:18px;padding:14px;margin:14px 0 22px;}} .section > h2{{font-size:20px;margin:8px 6px 10px;}} .pill{{display:inline-block;font-size:12px;color:#081229;background:#cfe1ff;border-radius:999px;padding:2px 10px;margin-left:8px;}} .pill a{{color:#081229;text-decoration:none;}} .pill a:hover{{color:#004488;}} .grid{{display:grid;grid-template-columns:1fr;gap:14px;}} @media(min-width:900px){{.grid-2{{grid-template-columns:1fr 1fr;}} .grid-3{{grid-template-columns:1fr 1fr 1fr;}}}} .anchor{{scroll-margin-top:20px;}}</style></head><body><div class="wrap"><div class="hero"><h1>📊 UrbenEye — Informe Interactivo — {fecha}</h1><div class="sub">Fuente: Idealista API | Generado Automáticamente</div></div>
 """ ]
     df_all = []
     for barrio, df in zip(barrios, all_dfs):
@@ -240,7 +216,6 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
         parts.append('</div><div class="grid grid-2">')
         parts.append(scatter_precio_size(df, color))
         parts.append(scatter_price_size_trend(df, "€/m² vs Tamaño: Tendencia no lineal", color))
-        parts.append(bar_chart_features(df, "€/m² Medio: Exterior vs Interior / Con vs Sin Ascensor", color))
         parts.append(bar_chart_lift_impact(df, "€/m² Medio: Con vs Sin Ascensor", color))
         parts.append('</div><div class="grid grid-2">')
         cols_order = ['price', 'size', 'price_per_m2', 'rooms', 'exterior_label', 'lift_label', 'url']
