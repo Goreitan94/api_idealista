@@ -1,21 +1,39 @@
+# app.py
 import streamlit as st
-import plotly.express as px
-import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+from io import BytesIO
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage
+from reportlab.lib.styles import getSampleStyleSheet
+from PIL import Image
+import tempfile
 
 
-password = st.text_input("Introduce la contraseña", type="password")
-if password != "Eitangor94":
-    st.error("Acceso denegado ❌")
-    st.stop()
-
-# -----------------------------
-# Interfaz Streamlit - Configuración Inicial
-# -----------------------------
 st.set_page_config(layout="wide", page_title="Calculadora Inmobiliaria UrbenEye", page_icon="🏡", initial_sidebar_state="expanded")
 
-# Estado inicial del tema (claro por defecto)
+# -----------------------------
+# Configuración inicial
+# -----------------------------
+# Valores por defecto (reseteables)
+DEFAULTS = {
+    "roi": 25,
+    "dias_balance": 200,
+    "m2": 80,
+    "precio_m2_reformado": 3000,
+    "precio_m2_noreformado": 2500,
+    "gastos_especiales": 0,
+    "comision_venta_pct": 3,
+    "broker_pct": 0.0,
+    "porcentaje_financiado": 75,
+    "interes_anual": 0.0,
+    "precio_compra_estimado": 200000 # Nuevo valor por defecto
+}
+
+# -----------------------------
+# Tema claro/oscuro (CSS)
+# -----------------------------
 if 'theme' not in st.session_state:
     st.session_state.theme = 'light'
 
@@ -24,8 +42,10 @@ def toggle_theme():
 
 if st.session_state.theme == 'dark':
     bg_color, text_color, header_color = '#0E1117', '#FAFAFA', '#FAFAFA'
+    plotly_template = 'plotly_dark'
 else:
-    bg_color, text_color, header_color = '#FFFFFF', '#31333F', '#1A73E8'
+    bg_color, text_color, header_color = '#FFFFFF', '#111827', '#0B5FFF'
+    plotly_template = 'plotly_white'
 
 st.markdown(f"""
 <style>
@@ -36,19 +56,25 @@ st.markdown(f"""
     [data-testid="stMetricValue"] {{ color: {text_color} !important; }}
     [data-testid="stMetricLabel"] {{ color: {text_color} !important; }}
     .stMarkdown, .stText, .stCode, .stSelectbox label, .stNumberInput label {{ color: {text_color} !important; }}
+    .stButton > button {{ cursor: pointer; }}
 </style>
 """, unsafe_allow_html=True)
 
 # -----------------------------
-# Funciones auxiliares de cálculo
+# Utilidades financieras
 # -----------------------------
-def pmt(rate, nper, pv):
-    """Calculates the monthly payment for a loan."""
-    if rate == 0:
+def pmt(rate_annual, nper, pv):
+    """Monthly payment (rate_annual expressed as decimal)."""
+    if nper == 0:
+        return 0
+    if rate_annual == 0:
         return pv / nper
-    rate_monthly = rate / 12
-    return (rate_monthly * pv) / (1 - (1 + rate_monthly)**-nper)
+    rate_monthly = rate_annual / 12.0
+    return (rate_monthly * pv) / (1 - (1 + rate_monthly) ** (-nper))
 
+# -----------------------------
+# Cálculos principales
+# -----------------------------
 def calcular_resultados(
     m2,
     precio_m2_reformado,
@@ -60,407 +86,481 @@ def calcular_resultados(
     interes_anual,
     dias_balance,
     roi_objetivo,
-    custom_reforma_coste_m2=None # Nuevo parámetro para el gráfico de equilibrio
+    precio_compra_fijo=None, # Parámetro opcional para los gráficos
+    coste_reforma_fijo=None # Parámetro opcional para los gráficos
 ):
-    resultados_dict = {}
-    tipos_reforma = ["Lavado de cara", "Reforma integral barata", "Reforma integral normal"]
-    
-    # Precio de venta base y sin reforma
-    precio_venta_reformado = precio_m2_reformado * m2
-    comision_venta_reformado = precio_venta_reformado * (comision_venta_pct / 100) * 1.21
+    """
+    Calcula todos los escenarios (Sin reforma + 3 reformas) y devuelve un dict con resultados detallados.
+    Si se pasa un precio de compra fijo, no se usa el ROI objetivo.
+    """
+    IVA = 0.21
+    notaria = 800.0
+    registro = 200.0
+    gastos_fijos = notaria + registro + gastos_especiales
 
-    precio_venta_noreformado = precio_m2_noreformado * m2
-    comision_venta_noreformado = precio_venta_noreformado * (comision_venta_pct / 100) * 1.21
-
-    # Gastos fijos
-    notaria = 800
-    registro = 200
-    gastos_extra = gastos_especiales
-    gastos_adquisicion_fijos = notaria + registro + gastos_extra
-
-    # Escenario Sin Reforma
-    coste_reforma_noref_base = 0
-    iva_reforma_noref = 0
-    coste_reforma_noref_total = 0 # Incluye IVA
-    pv_neto_noref = precio_venta_noreformado - comision_venta_noreformado
-    
-    # Ecuación para precio de compra
-    def precio_compra_objetivo(roi_obj, coste_reforma_total, pv_neto):
-        t = dias_balance / 365
-        a = (1 + broker_pct/100*1.21)
-        b = gastos_adquisicion_fijos + coste_reforma_total
-        num = pv_neto - b - roi_obj/100*t*b
-        den = roi_obj/100*t*a + a
-        return max(num / den, 0)
-    
-    precio_compra_max_noref = precio_compra_objetivo(roi_objetivo, coste_reforma_noref_total, pv_neto_noref)
-    
-    broker_fee_noref = precio_compra_max_noref * (broker_pct/100) * 1.21
-    inversion_total_noref = precio_compra_max_noref + gastos_adquisicion_fijos + coste_reforma_noref_total + broker_fee_noref
-    ganancia_bruta_noref = pv_neto_noref - inversion_total_noref
-    roi_absoluto_noref = ganancia_bruta_noref / inversion_total_noref if inversion_total_noref > 0 else 0
-    roi_anualizado_noref = roi_absoluto_noref / (dias_balance/365) if dias_balance > 0 else 0
-    
-    # Cálculos apalancados y beneficios
-    if porcentaje_financiado > 0:
-        monto_financiado_noref = precio_compra_max_noref * (porcentaje_financiado / 100)
-        down_payment_noref = inversion_total_noref - monto_financiado_noref
-        pago_mensual_noref = pmt(interes_anual/100, 300, monto_financiado_noref)
-        interes_total_noref = monto_financiado_noref * (interes_anual/100) * (dias_balance/365)
-        ganancia_neta_lev_noref = ganancia_bruta_noref - interes_total_noref
-        roi_anualizado_lev_noref = (ganancia_neta_lev_noref / down_payment_noref) / (dias_balance/365) if down_payment_noref > 0 and dias_balance > 0 else 0
-        pago_total_noref = pago_mensual_noref * (dias_balance / 30) if dias_balance > 0 else 0
-    else:
-        monto_financiado_noref = 0
-        down_payment_noref = inversion_total_noref
-        ganancia_neta_lev_noref = ganancia_bruta_noref
-        roi_anualizado_lev_noref = roi_anualizado_noref
-        pago_mensual_noref = 0
-        pago_total_noref = 0
-
-    preferred_noref = 0.08 * down_payment_noref
-    distrib_inv_noref, distrib_mgmt_noref = (0, 0)
-    if ganancia_neta_lev_noref > 0:
-        if ganancia_neta_lev_noref <= preferred_noref:
-            distrib_inv_noref = ganancia_neta_lev_noref
-        else:
-            excedente = ganancia_neta_lev_noref - preferred_noref
-            distrib_inv_noref = preferred_noref + 0.75 * excedente
-            distrib_mgmt_noref = 0.25 * excedente
-
-    resultados_dict["Sin Reforma"] = {
-        "PrecioVentaTotal": precio_venta_noreformado,
-        "PrecioCompraMax": precio_compra_max_noref,
-        "InversionTotal": inversion_total_noref,
-        "MontoFinanciado": monto_financiado_noref, # Añadido
-        "DownPayment": down_payment_noref,
-        "GastosAdquisicionFijos": gastos_adquisicion_fijos,
-        "CostoReformaTotal": coste_reforma_noref_total,
-        "BrokerFee": broker_fee_noref,
-        "GananciaBruta": ganancia_bruta_noref,
-        "GananciaNetaLeveraged": ganancia_neta_lev_noref,
-        "ROI_anual": roi_anualizado_noref,
-        "ROI_anual_lev": roi_anualizado_lev_noref,
-        "DistribInversor": distrib_inv_noref,
-        "DistribManagement": distrib_mgmt_noref,
-        "Viable": roi_anualizado_lev_noref >= 0.20 if porcentaje_financiado > 0 else roi_anualizado_noref >= 0.20,
-        "PagoMensual": pago_mensual_noref,
-        "PagoTotal": pago_total_noref,
-        "CostoReformaBase": coste_reforma_noref_base,
-        "IVA": iva_reforma_noref
+    tipos = {
+        "Sin Reforma": 0,
+        "Lavado de cara": 500,
+        "Reforma integral barata": 750,
+        "Reforma integral normal": 1000
     }
 
-    # Escenarios con Reforma
-    for tipo_reforma in tipos_reforma:
-        if custom_reforma_coste_m2 is not None:
-            coste_reforma_base = m2 * custom_reforma_coste_m2
-        elif tipo_reforma == "Lavado de cara": coste_reforma_base = m2 * 500
-        elif tipo_reforma == "Reforma integral barata": coste_reforma_base = m2 * 750
-        else: coste_reforma_base = m2 * 1000
-        
-        iva_reforma = coste_reforma_base * 0.21
-        coste_reforma_total = coste_reforma_base + iva_reforma
-        
-        pv_neto = precio_venta_reformado - comision_venta_reformado
-        precio_compra_max = precio_compra_objetivo(roi_objetivo, coste_reforma_total, pv_neto)
-        
-        broker_fee = precio_compra_max * (broker_pct/100) * 1.21
-        inversion_total = precio_compra_max + gastos_adquisicion_fijos + coste_reforma_total + broker_fee
-        ganancia_bruta = pv_neto - inversion_total
-        roi_absoluto = ganancia_bruta / inversion_total if inversion_total > 0 else 0
-        roi_anualizado = roi_absoluto / (dias_balance/365) if dias_balance > 0 else 0
-        
-        if porcentaje_financiado > 0:
-            monto_financiado = precio_compra_max * (porcentaje_financiado / 100)
-            down_payment = inversion_total - monto_financiado
-            pago_mensual = pmt(interes_anual/100, 300, monto_financiado)
-            interes_total = monto_financiado * (interes_anual/100) * (dias_balance/365)
-            ganancia_neta_lev = ganancia_bruta - interes_total
-            roi_anualizado_lev = (ganancia_neta_lev / down_payment) / (dias_balance/365) if down_payment > 0 and dias_balance > 0 else 0
-            pago_total = pago_mensual * (dias_balance / 30) if dias_balance > 0 else 0
+    precio_venta_reformado_total = precio_m2_reformado * m2
+    precio_venta_noreformado_total = precio_m2_noreformado * m2
+
+    resultados = {}
+
+    # Variables auxiliares
+    t = dias_balance / 365.0
+    
+    for nombre, coste_m2 in tipos.items():
+        if coste_reforma_fijo is not None:
+            coste_reforma_base = m2 * coste_reforma_fijo
         else:
-            monto_financiado = 0
-            down_payment = inversion_total
-            ganancia_neta_lev = ganancia_bruta
-            roi_anualizado_lev = roi_anualizado
-            pago_mensual = 0
-            pago_total = 0
+            coste_reforma_base = m2 * coste_m2
+
+        iva_reforma = coste_reforma_base * IVA
+        coste_reforma_total = coste_reforma_base + iva_reforma
+
+        if nombre == "Sin Reforma":
+            pv_total = precio_venta_noreformado_total
+        else:
+            pv_total = precio_venta_reformado_total
+
+        comision_venta = pv_total * (comision_venta_pct / 100.0) * (1 + IVA)
+        pv_neto = pv_total - comision_venta
         
-        preferred = 0.08 * down_payment
-        distrib_inv, distrib_mgmt = (0, 0)
-        if ganancia_neta_lev > 0:
+        # Broker factor (incluye IVA)
+        broker_factor = (broker_pct / 100.0) * (1 + IVA)
+
+        if precio_compra_fijo is not None:
+            # Flujo para gráficos de valor: el precio de compra es fijo
+            precio_compra = precio_compra_fijo
+            broker_fee = precio_compra * broker_factor
+            inversion_total = precio_compra + gastos_fijos + coste_reforma_total + broker_fee
+        else:
+            # Flujo normal: se calcula el precio de compra en base al ROI objetivo
+            r_ann_obj = roi_objetivo / 100.0
+            roi_abs_obj = r_ann_obj * t
+            denom_inv = 1.0 + roi_abs_obj
+            inv_total_obj = pv_neto / denom_inv if denom_inv > 0 else 0
+            const_b = gastos_fijos + coste_reforma_total
+            denom_pc = 1.0 + broker_factor
+            precio_compra = max((inv_total_obj - const_b) / denom_pc, 0.0)
+            
+            broker_fee = precio_compra * broker_factor
+            inversion_total = precio_compra + const_b + broker_fee
+
+
+        ganancia_bruta = pv_neto - inversion_total
+
+        # ROI Unleveraged (proyecto puro)
+        roi_abs = ganancia_bruta / inversion_total if inversion_total > 0 else 0.0
+        roi_anual_unlev = roi_abs / t if t > 0 else 0.0
+
+        # Financiación / apalancamiento
+        if porcentaje_financiado > 0:
+            monto_financiado = precio_compra * (porcentaje_financiado / 100.0)
+        else:
+            monto_financiado = 0.0
+        down_payment = inversion_total - monto_financiado if inversion_total > 0 else 0.0
+        interes_total = monto_financiado * (interes_anual / 100.0) * t
+        cuota_mensual = pmt(interes_anual / 100.0, 300, monto_financiado) if monto_financiado > 0 else 0.0
+        pago_total_holding = cuota_mensual * (dias_balance / 30.0) if cuota_mensual > 0 else 0.0
+
+        ganancia_neta_lev = ganancia_bruta - interes_total
+        roi_abs_lev = ganancia_neta_lev / down_payment if down_payment > 0 else 0.0
+        roi_anual_lev = roi_abs_lev / t if t > 0 else 0.0
+
+        preferred = 0.08 * inversion_total
+
+        distrib_inversor = 0.0
+        distrib_management = 0.0
+        if ganancia_neta_lev <= 0:
+            distrib_inversor = max(0.0, ganancia_neta_lev)
+            distrib_management = 0.0
+        else:
             if ganancia_neta_lev <= preferred:
-                distrib_inv = ganancia_neta_lev
+                distrib_inversor = ganancia_neta_lev
+                distrib_management = 0.0
             else:
                 excedente = ganancia_neta_lev - preferred
-                distrib_inv = preferred + 0.75 * excedente
-                distrib_mgmt = 0.25 * excedente
-                
-        resultados_dict[tipo_reforma] = {
-            "PrecioVentaTotal": precio_venta_reformado,
-            "PrecioCompraMax": precio_compra_max,
-            "InversionTotal": inversion_total,
-            "MontoFinanciado": monto_financiado, # Añadido
-            "DownPayment": down_payment,
-            "GastosAdquisicionFijos": gastos_adquisicion_fijos,
-            "CostoReformaTotal": coste_reforma_total,
+                distrib_inversor = preferred + 0.75 * excedente
+                distrib_management = 0.25 * excedente
+
+        viable = (roi_anual_unlev >= 0.20) if precio_compra_fijo is None else (roi_anual_lev >= 0.20)
+        
+        resultados[nombre] = {
+            "PrecioVentaTotal": pv_total,
+            "PrecioVentaNeto": pv_neto,
+            "PrecioCompraMax": precio_compra,
             "BrokerFee": broker_fee,
+            "GastosAdquisicionFijos": gastos_fijos,
+            "CostoReformaBase": coste_reforma_base,
+            "IVA_Reforma": iva_reforma,
+            "CostoReformaTotal": coste_reforma_total,
+            "InversionTotal": inversion_total,
+            "DownPayment": down_payment,
+            "MontoFinanciado": monto_financiado,
+            "InteresTotalPeriodo": interes_total,
+            "PagoMensual": cuota_mensual,
+            "PagoTotalHolding": pago_total_holding,
             "GananciaBruta": ganancia_bruta,
             "GananciaNetaLeveraged": ganancia_neta_lev,
-            "ROI_anual": roi_anualizado,
-            "ROI_anual_lev": roi_anualizado_lev,
-            "DistribInversor": distrib_inv,
-            "DistribManagement": distrib_mgmt,
-            "Viable": roi_anualizado_lev >= 0.20 if porcentaje_financiado > 0 else roi_anualizado >= 0.20,
-            "PagoMensual": pago_mensual,
-            "PagoTotal": pago_total,
-            "CostoReformaBase": coste_reforma_base,
-            "IVA": iva_reforma
+            "ROI_unleveraged_abs": roi_abs,
+            "ROI_unleveraged_anual": roi_anual_unlev,
+            "ROI_leveraged_abs": roi_abs_lev,
+            "ROI_leveraged_anual": roi_anual_lev,
+            "Preferred": preferred,
+            "DistribInversor": distrib_inversor,
+            "DistribManagement": distrib_management,
+            "Viable": viable
         }
 
-    return resultados_dict
+    return resultados
 
-def generar_grafico_roi_viabilidad(m2, precio_m2_actual_reformado, precio_m2_noreformado_base, gastos_especiales, comision_venta_pct, broker_pct, porcentaje_financiado, interes_anual, dias_balance, roi_objetivo):
-    precios_venta_m2 = np.arange(0, precio_m2_actual_reformado * 2, 25) # Comienza desde 0
+
+# -----------------------------
+# Generadores de gráficos de valor (ROI vs. variables)
+# -----------------------------
+def generar_grafico_roi_vs_precio_venta(m2, pc_estimado, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, dias_balance, roi_objetivo, leveraged=False):
+    precios = np.arange(1000, 5000 + 1, step=100)
+    data = []
+    roi_key = "ROI_leveraged_anual" if leveraged else "ROI_unleveraged_anual"
+    titulo = "ROI Apalancado" if leveraged else "ROI Sin Apalancar"
+
+    for p in precios:
+        res = calcular_resultados(
+            m2=m2, precio_m2_reformado=p, precio_m2_noreformado=precio_m2_noreformado,
+            gastos_especiales=gastos_especiales, comision_venta_pct=comision_venta_pct,
+            broker_pct=broker_pct, porcentaje_financiado=0 if not leveraged else 75,
+            interes_anual=0 if not leveraged else 0, dias_balance=dias_balance,
+            roi_objetivo=roi_objetivo, precio_compra_fijo=pc_estimado,
+            coste_reforma_fijo=DEFAULTS["precio_m2_reformado"]-DEFAULTS["precio_m2_noreformado"]
+        )
+        roi_val = res["Lavado de cara"][roi_key]
+        data.append((p, roi_val * 100))
+    df = pd.DataFrame(data, columns=["Precio_m2", f"{titulo}_%"])
     
-    data = {'precio_m2_venta': [], 'roi_apalancado': []}
-    
-    for p_m2 in precios_venta_m2:
-        try:
-            resultados = calcular_resultados(
-                m2=m2,
-                precio_m2_reformado=p_m2, # Usamos el precio simulado como precio de venta
-                precio_m2_noreformado=precio_m2_noreformado_base, # Mantenemos el noreformado base para referencia
-                gastos_especiales=gastos_especiales,
-                comision_venta_pct=comision_venta_pct,
-                broker_pct=broker_pct,
-                porcentaje_financiado=porcentaje_financiado,
-                interes_anual=interes_anual,
-                dias_balance=dias_balance,
-                roi_objetivo=roi_objetivo
-            )
-            roi = resultados['Lavado de cara']['ROI_anual_lev']
-            data['precio_m2_venta'].append(p_m2)
-            data['roi_apalancado'].append(roi)
-        except (ZeroDivisionError, KeyError): # Manejamos errores si el down payment es 0
-            data['precio_m2_venta'].append(p_m2)
-            data['roi_apalancado'].append(0)
-
-    df = pd.DataFrame(data)
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df['precio_m2_venta'], y=df['roi_apalancado'] * 100,
-                             mode='lines', name='ROI Anualizado Apalancado')) # Quité markers para una línea más suave
-
-    # Línea de viabilidad en 20%
-    fig.add_hline(y=20, line_dash="dash", line_color="red", annotation_text="Viabilidad (20% ROI)", annotation_position="bottom right")
-
-    # Encuentra el punto de intersección
-    try:
-        # Filtramos solo los puntos donde el ROI es positivo o cumple la viabilidad
-        df_viable_positive = df[(df['roi_apalancado'] >= 0.0) & (df['precio_m2_venta'] > 0)]
-        if not df_viable_positive.empty:
-            # Encontramos el primer precio donde el ROI apalancado es >= 20%
-            viability_cross_idx = (df_viable_positive['roi_apalancado'] * 100 >= 20).idxmax()
-            precio_viabilidad = df_viable_positive.loc[viability_cross_idx, 'precio_m2_venta']
-
-            fig.add_vline(x=precio_viabilidad, line_dash="dash", line_color="green", annotation_text=f"Viable desde {precio_viabilidad:,.0f}€/m²", annotation_position="top left")
-    except (IndexError, TypeError):
-        pass # No se encontró punto de cruce
-
-    fig.update_layout(title='Viabilidad de la Operación (ROI vs. Precio de Venta)',
-                      xaxis_title='Precio de Venta por m² (€)',
-                      yaxis_title='ROI Anualizado Apalancado (%)',
-                      template="plotly_white" if st.session_state.theme == 'light' else "plotly_dark")
-    
+    fig = px.line(df, x="Precio_m2", y=f"{titulo}_%", title=f"{titulo} vs Precio de Venta €/m²", template=plotly_template)
+    fig.add_hline(y=20, line_dash="dash", line_color="red", annotation_text="Viabilidad 20%", annotation_position="top right")
+    fig.update_layout(xaxis_title="Precio de Venta €/m²", yaxis_title=f"{titulo} (%)")
     return fig
 
-def generar_grafico_punto_equilibrio_reforma(m2, precio_m2_reformado_base, gastos_especiales, comision_venta_pct, broker_pct, porcentaje_financiado, interes_anual, dias_balance, roi_objetivo):
-    costes_m2_reforma = np.arange(0, 1500, 25) # Rango de costes de reforma por m2
-    
-    data = {'coste_m2_reforma': [], 'roi_apalancado': []}
-    
-    for coste_m2 in costes_m2_reforma:
-        try:
-            resultados_sim = calcular_resultados(
-                m2=m2,
-                precio_m2_reformado=precio_m2_reformado_base,
-                precio_m2_noreformado=precio_m2_reformado_base, # Usamos el mismo como base, aunque no se usa directamente para el coste de reforma
-                gastos_especiales=gastos_especiales,
-                comision_venta_pct=comision_venta_pct,
-                broker_pct=broker_pct,
-                porcentaje_financiado=porcentaje_financiado,
-                interes_anual=interes_anual,
-                dias_balance=dias_balance,
-                roi_objetivo=roi_objetivo,
-                custom_reforma_coste_m2=coste_m2 # Pasamos el coste de reforma simulado
-            )
-            roi = resultados_sim['Lavado de cara']['ROI_anual_lev'] # Usamos cualquier escenario de reforma, ya que custom_reforma_coste_m2 lo sobrescribe
-            data['coste_m2_reforma'].append(coste_m2)
-            data['roi_apalancado'].append(roi)
-        except (ZeroDivisionError, KeyError):
-            data['coste_m2_reforma'].append(coste_m2)
-            data['roi_apalancado'].append(0) # ROI 0 si hay error o división por cero
 
-    df = pd.DataFrame(data)
-    
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df['coste_m2_reforma'], y=df['roi_apalancado'] * 100,
-                             mode='lines', name='ROI Apalancado'))
-    
-    fig.update_layout(
-        title='Punto de Equilibrio de la Reforma (ROI vs. Coste de Reforma)',
-        xaxis_title='Coste de Reforma por m² (€)',
-        yaxis_title='ROI Anualizado Apalancado (%)',
-        template="plotly_white" if st.session_state.theme == 'light' else "plotly_dark",
-        legend=dict(x=0.01, y=0.99)
-    )
+def generar_grafico_ganancia_vs_coste_reforma(m2, pc_estimado, precio_m2_reformado, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, dias_balance, leveraged=False):
+    costes = np.arange(0, 1500 + 1, 50)
+    data = []
+    ganancia_key = "GananciaNetaLeveraged" if leveraged else "GananciaBruta"
+    titulo = "Ganancia Neta" if leveraged else "Ganancia Bruta"
 
-    fig.add_hline(y=20, line_dash="dash", line_color="red", annotation_text="Viabilidad (20% ROI)", annotation_position="top right", yref="y1")
+    for cost_m2 in costes:
+        res = calcular_resultados(
+            m2=m2, precio_m2_reformado=precio_m2_reformado, precio_m2_noreformado=precio_m2_noreformado,
+            gastos_especiales=gastos_especiales, comision_venta_pct=comision_venta_pct,
+            broker_pct=broker_pct, porcentaje_financiado=0 if not leveraged else 75,
+            interes_anual=0 if not leveraged else 0, dias_balance=dias_balance,
+            roi_objetivo=0, precio_compra_fijo=pc_estimado, coste_reforma_fijo=cost_m2
+        )
+        ganancia_val = res["Lavado de cara"][ganancia_key]
+        data.append((cost_m2, ganancia_val))
+    df = pd.DataFrame(data, columns=["Coste_m2", f"{titulo}_€"])
     
-    # Encuentra el punto de cruce para el coste de reforma
-    try:
-        df_viable_reforma = df[df['roi_apalancado'] * 100 >= 20]
-        if not df_viable_reforma.empty:
-            coste_viabilidad_reforma = df_viable_reforma['coste_m2_reforma'].max() # Máximo coste para ser viable
-            fig.add_vline(x=coste_viabilidad_reforma, line_dash="dash", line_color="green", annotation_text=f"Viable hasta {coste_viabilidad_reforma:,.0f}€/m²", annotation_position="bottom right")
-    except (IndexError, TypeError):
-        pass
+    fig = px.line(df, x="Coste_m2", y=f"{titulo}_€", title=f"{titulo} vs Coste de Reforma €/m²", template=plotly_template)
+    fig.add_hline(y=0, line_dash="dash", line_color="red", annotation_text="Punto de Equilibrio", annotation_position="bottom right")
+    fig.update_layout(xaxis_title="Coste de Reforma €/m²", yaxis_title=f"{titulo} (€)")
+    return fig
 
+def generar_grafico_ganancia_vs_dias(m2, pc_estimado, precio_m2_reformado, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, interes_anual, leveraged=False):
+    dias = np.arange(10, 365 + 1, 10)
+    data = []
+    ganancia_key = "GananciaNetaLeveraged" if leveraged else "GananciaBruta"
+    titulo = "Ganancia Neta" if leveraged else "Ganancia Bruta"
+
+    for d in dias:
+        res = calcular_resultados(
+            m2=m2, precio_m2_reformado=precio_m2_reformado, precio_m2_noreformado=precio_m2_noreformado,
+            gastos_especiales=gastos_especiales, comision_venta_pct=comision_venta_pct,
+            broker_pct=broker_pct, porcentaje_financiado=0 if not leveraged else 75,
+            interes_anual=0 if not leveraged else interes_anual, dias_balance=d,
+            roi_objetivo=0, precio_compra_fijo=pc_estimado,
+            coste_reforma_fijo=DEFAULTS["precio_m2_reformado"]-DEFAULTS["precio_m2_noreformado"]
+        )
+        ganancia_val = res["Lavado de cara"][ganancia_key]
+        data.append((d, ganancia_val))
+    df = pd.DataFrame(data, columns=["Dias", f"{titulo}_€"])
+
+    fig = px.line(df, x="Dias", y=f"{titulo}_€", title=f"{titulo} vs Días en el Mercado", template=plotly_template)
+    fig.update_layout(xaxis_title="Días en el mercado", yaxis_title=f"{titulo} (€)")
     return fig
 
 # -----------------------------
-# Interfaz principal de Streamlit
+# Exportadores (Excel y PDF)
 # -----------------------------
-st.title("🏡 Calculadora UrbenEye de Oportunidades Inmobiliarias")
+def exportar_excel(resultados):
+    out = BytesIO()
+    with pd.ExcelWriter(out, engine='openpyxl') as writer:
+        # summary
+        rows = []
+        for esc, data in resultados.items():
+            row = {'Escenario': esc}
+            row.update({
+                'PrecioVentaTotal': data['PrecioVentaTotal'],
+                'PrecioCompraMax': data['PrecioCompraMax'],
+                'InversionTotal': data['InversionTotal'],
+                'GananciaBruta': data['GananciaBruta'],
+                'GananciaNetaLeveraged': data['GananciaNetaLeveraged'],
+                'ROI_unleveraged_anual_%': data['ROI_unleveraged_anual'] * 100,
+                'ROI_leveraged_anual_%': data['ROI_leveraged_anual'] * 100,
+                'Viable': data['Viable']
+            })
+            rows.append(row)
+        df_summary = pd.DataFrame(rows)
+        df_summary.to_excel(writer, index=False, sheet_name='Resumen')
 
+        # sheets por escenario
+        for esc, data in resultados.items():
+            df = pd.DataFrame(list(data.items()), columns=['Métrica', 'Valor'])
+            df.to_excel(writer, index=False, sheet_name=esc[:31])  # sheet name <=31 chars
+    out.seek(0)
+    return out
+
+def exportar_pdf(resultados, figs_unlev, figs_lev):
+    out = BytesIO()
+    doc = SimpleDocTemplate(out)
+    styles = getSampleStyleSheet()
+    elems = []
+    elems.append(Paragraph("UrbenEye - Reporte de Oportunidad", styles['Title']))
+    elems.append(Spacer(1, 8))
+    
+    # Añadir gráficos de ROI sin apalancar
+    if figs_unlev:
+        elems.append(Paragraph("<b>Análisis de sensibilidad (sin apalancar)</b>", styles['Heading2']))
+        elems.append(Spacer(1, 6))
+        for fig in figs_unlev:
+            tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+            fig.write_image(tmp.name, scale=2)
+            elems.append(RLImage(tmp.name, width=450, height=250))
+            elems.append(Spacer(1, 12))
+    
+    # Añadir gráficos de ROI apalancado
+    if figs_lev:
+        elems.append(Paragraph("<b>Análisis de sensibilidad (apalancado)</b>", styles['Heading2']))
+        elems.append(Spacer(1, 6))
+        for fig in figs_lev:
+            tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+            fig.write_image(tmp.name, scale=2)
+            elems.append(RLImage(tmp.name, width=450, height=250))
+            elems.append(Spacer(1, 12))
+
+    doc.build(elems)
+    out.seek(0)
+    return out
+# -----------------------------
+# Interfaz - Inputs
+# -----------------------------
 with st.sidebar:
     st.header("Configuración Global")
-    st.markdown("Ajusta los parámetros para el análisis.")
     st.button(f"Cambiar a Tema {'Claro' if st.session_state.theme == 'dark' else 'Oscuro'}", on_click=toggle_theme)
     st.markdown("---")
-    roi_input = st.number_input("ROI objetivo (%)", value=25, step=1)
-    roi_slider = st.slider("Mover ROI (%)", 0, 200, roi_input, step=1)
-    dias_balance = st.number_input("Días en balance", value=200, step=10)
+    # Reset
+    if st.button("🔄 Reset parámetros (valores por defecto)"):
+        for k, v in DEFAULTS.items():
+            st.session_state[k] = v
+    st.markdown("---")
+    
+    st.markdown("### Parámetros de mercado / propiedad")
+    m2 = st.number_input("Metros cuadrados (m²)", value=st.session_state.get("m2", DEFAULTS["m2"]), step=1, key="m2")
+    precio_m2_reformado = st.number_input("Precio venta €/m² (reformado)", value=st.session_state.get("precio_m2_reformado", DEFAULTS["precio_m2_reformado"]), step=50, key="precio_m2_reformado")
+    precio_m2_noreformado = st.number_input("Precio venta €/m² (sin reformar)", value=st.session_state.get("precio_m2_noreformado", DEFAULTS["precio_m2_noreformado"]), step=50, key="precio_m2_noreformado")
+    precio_compra_estimado = st.number_input("Precio de compra estimado (€)", value=st.session_state.get("precio_compra_estimado", DEFAULTS["precio_compra_estimado"]), step=1000, key="precio_compra_estimado")
+    st.markdown("---")
+    
+    st.markdown("### ROI objetivo y días en balance")
+    roi = st.number_input("ROI objetivo anual (%)", value=st.session_state.get("roi", DEFAULTS["roi"]), step=1, key="roi")
+    roi_slider = st.slider("Mover ROI (%)", min_value=0, max_value=200, value=int(roi), step=1)
+    dias_balance = st.number_input("Días en balance", value=st.session_state.get("dias_balance", DEFAULTS["dias_balance"]), step=10, key="dias_balance")
+    st.markdown("---")
 
-st.markdown("---")
-with st.container():
-    st.subheader("1. Datos de la Propiedad y Mercado")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        m2 = st.number_input("Metros cuadrados (m²)", value=80, step=1)
-    with col2:
-        precio_m2_reformado = st.number_input("Precio venta/m² **reformado** (€)", value=3000, step=100)
-    with col3:
-        precio_m2_noreformado = st.number_input("Precio venta/m² **sin reformar** (€)", value=2500, step=100)
+    st.markdown("### Costes y financiación")
+    gastos_especiales = st.number_input("Gastos especiales (€)", value=st.session_state.get("gastos_especiales", DEFAULTS["gastos_especiales"]), step=50, key="gastos_especiales")
+    comision_venta_pct = st.selectbox("Comisión de venta (%)", options=[1, 3], index=1 if DEFAULTS["comision_venta_pct"] == 3 else 0, key="comision_venta_pct")
+    broker_pct = st.number_input("Broker fee (%)", value=st.session_state.get("broker_pct", DEFAULTS["broker_pct"]), step=0.5, key="broker_pct")
+    porcentaje_financiado = st.number_input("Porcentaje financiado (%)", value=st.session_state.get("porcentaje_financiado", DEFAULTS["porcentaje_financiado"]), min_value=0, max_value=100, step=1, key="porcentaje_financiado")
+    interes_anual = st.number_input("Interés anual (%)", value=st.session_state.get("interes_anual", DEFAULTS["interes_anual"]), step=0.25, key="interes_anual")
 
-st.markdown("---")
-with st.container():
-    st.subheader("2. Costes de Operación y Financiación")
-    col1, col2 = st.columns(2)
-    with col1:
-        gastos_especiales = st.number_input("Gastos especiales (€)", value=0, step=100)
-        comision_venta_pct = st.selectbox("Comisión de venta (%)", [1, 3])
-        broker_pct = st.number_input("Broker fee (%)", value=0.0, step=0.5)
-    with col2:
-        porcentaje_financiado = st.number_input("Porcentaje financiado (%)", value=75, min_value=0, max_value=100, step=1)
-        interes_anual = st.number_input("Tasa de interés anual (%)", value=0.0, step=0.5)
+# -----------------------------
+# Cálculo
+# -----------------------------
+resultados_base = calcular_resultados(
+    m2=m2,
+    precio_m2_reformado=precio_m2_reformado,
+    precio_m2_noreformado=precio_m2_noreformado,
+    gastos_especiales=gastos_especiales,
+    comision_venta_pct=comision_venta_pct,
+    broker_pct=broker_pct,
+    porcentaje_financiado=porcentaje_financiado,
+    interes_anual=interes_anual,
+    dias_balance=dias_balance,
+    roi_objetivo=roi_slider,
+    precio_compra_fijo=None # Se usa el flujo de cálculo por ROI
+)
 
-st.markdown("---")
-resultados = calcular_resultados(m2, precio_m2_reformado, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, porcentaje_financiado, interes_anual, dias_balance, roi_slider)
-st.header("3. Análisis de la Oportunidad :chart_with_upwards_trend:")
-st.markdown("### Precios de Venta")
-col1, col2 = st.columns(2)
-with col1:
-    st.metric("Precio de Venta Reformado", f"{resultados['Lavado de cara']['PrecioVentaTotal']:,.0f} €")
-with col2:
-    st.metric("Precio de Venta sin Reforma", f"{resultados['Sin Reforma']['PrecioVentaTotal']:,.0f} €")
+# -----------------------------
+# Presentación – KPIs Ejecutivos
+# -----------------------------
+st.title("🏡 UrbenEye — Calculadora de Oportunidades")
+st.markdown("Resumen ejecutivo: compara rápidamente los 4 escenarios (sin reforma + 3 niveles de reforma).")
 
-# Pestañas para los 4 escenarios
-tab0, tab1, tab2, tab3 = st.tabs(["Sin Reforma", "Lavado de cara", "Reforma integral barata", "Reforma integral normal"])
-def display_scenario(scenario_name, results):
-    with st.container():
-        st.subheader(f"Análisis de {scenario_name}")
-        col_kpi1, col_kpi2 = st.columns(2)
-        with col_kpi1:
-            st.metric("Precio de Compra Máximo", f"{results['PrecioCompraMax']:,.0f} €")
-        with col_kpi2:
-            st.metric("Inversión Máxima Total", f"{results['InversionTotal']:,.0f} €")
-        col_roi1, col_roi2 = st.columns(2)
-        with col_roi1:
-            st.metric("ROI Anualizado", f"{results['ROI_anual']*100:.1f}%")
-        with col_roi2:
-            st.metric("ROI Apalancado Anualizado", f"{results['ROI_anual_lev']*100:.1f}%")
-        if results["Viable"]:
-            st.success("✅ Operación VIABLE (ROI >= 20%)")
-        else:
-            st.error("❌ Operación NO VIABLE (ROI < 20%)")
-
-        with st.expander("Detalle de ganancias, costes y flujos de caja"):
-            st.markdown("#### Desglose de Inversión y Ganancias")
-            st.metric("Inversión Inicial (Down Payment)", f"{results['DownPayment']:,.0f} €")
-            st.metric("Monto Financiado", f"{results['MontoFinanciado']:,.0f} €")
-            st.metric("Ganancia Bruta (No Apalancada)", f"{results['GananciaBruta']:,.0f} €")
-            st.metric("Ganancia Neta (Apalancada)", f"{results['GananciaNetaLeveraged']:,.0f} €")
-            st.metric("Ganancia Inversor", f"{results['DistribInversor']:,.0f} €")
-            st.metric("Ganancia Management", f"{results['DistribManagement']:,.0f} €")
-            st.markdown("---")
-            st.markdown("#### Costes de Reforma")
-            st.metric("Costo de Obra (sin IVA)", f"{results['CostoReformaBase']:,.0f} €")
-            st.metric("IVA (21%)", f"{results['IVA']:,.0f} €")
-            st.markdown("---")
-            st.markdown("#### Flujo de Caja del Préstamo")
-            st.metric("Cuota Mensual (Principal + Intereses)", f"{results['PagoMensual']:,.0f} €")
-            st.metric("Pago Total Acumulado", f"{results['PagoTotal']:,.0f} €")
-
-with tab0: display_scenario("Sin Reforma", resultados["Sin Reforma"])
-with tab1: display_scenario("Lavado de cara", resultados["Lavado de cara"])
-with tab2: display_scenario("Reforma integral barata", resultados["Reforma integral barata"])
-with tab3: display_scenario("Reforma integral normal", resultados["Reforma integral normal"])
+kpis_cols = st.columns(4)
+ref = resultados_base["Lavado de cara"]
+kpis_cols[0].metric("Precio Compra Máx (Lavado)", f"{ref['PrecioCompraMax']:,.0f} €")
+kpis_cols[1].metric("ROI sin apalancar (Lavado)", f"{ref['ROI_unleveraged_anual']*100:.1f} %")
+kpis_cols[2].metric("Ganancia Inversor (Lavado)", f"{ref['DistribInversor']:,.0f} €")
+kpis_cols[3].metric("Ganancia Management (Lavado)", f"{ref['DistribManagement']:,.0f} €")
 
 st.markdown("---")
 
-st.subheader("Comparativa de Escenarios y Viabilidad :bar_chart:")
+# -----------------------------
+# Tabla comparativa (con estilo)
+# -----------------------------
+st.subheader("📊 Comparativa de Escenarios")
+df_comp = pd.DataFrame(resultados_base).T[[
+    "PrecioCompraMax", "InversionTotal", "GananciaNetaLeveraged", "ROI_unleveraged_anual", "ROI_leveraged_anual", "Viable"
+]]
+df_comp = df_comp.rename(columns={
+    "PrecioCompraMax": "PrecioCompraMax (€)",
+    "InversionTotal": "InversiónTotal (€)",
+    "GananciaNetaLeveraged": "GananciaNeta (€)",
+    "ROI_unleveraged_anual": "ROI_unlev_anual (%)",
+    "ROI_leveraged_anual": "ROI_lev_anual (%)",
+    "Viable": "Viable"
+})
 
-# Gráfico de 3 tartas con Inversión
-st.markdown("#### 📊 Distribución de la Inversión por Escenario de Reforma")
-col_grafico1, col_grafico2, col_grafico3 = st.columns(3)
+df_comp["ROI_unlev_anual (%)"] = pd.to_numeric(df_comp["ROI_unlev_anual (%)"], errors='coerce').fillna(0) * 100
+df_comp["ROI_unlev_anual (%)"] = df_comp["ROI_unlev_anual (%)"].round(1)
 
-def create_pie_chart_inversion(scenario_name, results):
-    df_chart = pd.DataFrame({
-        'Componente': ['Precio de Compra Máximo', 'Gastos de Adquisición', 'Costo de Reforma (Total)', 'Broker Fee'],
-        'Monto': [results['PrecioCompraMax'], results['GastosAdquisicionFijos'], results['CostoReformaTotal'], results['BrokerFee']]
-    })
-    fig = px.pie(df_chart, values='Monto', names='Componente',
-                 title=f'{scenario_name}',
-                 color_discrete_sequence=px.colors.sequential.RdBu) # Usamos una secuencia de colores
-    fig.update_traces(textposition='inside', textinfo='percent+label', marker=dict(line=dict(color='#000000', width=1)))
-    fig.update_layout(showlegend=False,
-                      template="plotly_white" if st.session_state.theme == 'light' else "plotly_dark")
-    return fig
+df_comp["ROI_lev_anual (%)"] = pd.to_numeric(df_comp["ROI_lev_anual (%)"], errors='coerce').fillna(0) * 100
+df_comp["ROI_lev_anual (%)"] = df_comp["ROI_lev_anual (%)"].round(1)
 
-with col_grafico1:
-    fig1 = create_pie_chart_inversion("Lavado de cara", resultados["Lavado de cara"])
-    st.plotly_chart(fig1, use_container_width=True)
+df_comp["PrecioCompraMax (€)"] = pd.to_numeric(df_comp["PrecioCompraMax (€)"], errors='coerce').fillna(0).round(0).astype(int)
+df_comp["InversiónTotal (€)"] = pd.to_numeric(df_comp["InversiónTotal (€)"], errors='coerce').fillna(0).round(0).astype(int)
+df_comp["GananciaNeta (€)"] = pd.to_numeric(df_comp["GananciaNeta (€)"], errors='coerce').fillna(0).round(0).astype(int)
 
-with col_grafico2:
-    fig2 = create_pie_chart_inversion("Reforma integral barata", resultados["Reforma integral barata"])
-    st.plotly_chart(fig2, use_container_width=True)
+def style_viability(v):
+    return "background-color: #2ecc71; color: white" if v else "background-color: #e74c3c; color: white"
 
-with col_grafico3:
-    fig3 = create_pie_chart_inversion("Reforma integral normal", resultados["Reforma integral normal"])
-    st.plotly_chart(fig3, use_container_width=True)
+st.dataframe(df_comp.style.applymap(style_viability, subset=["Viable"]))
 
 st.markdown("---")
 
-# Gráfico de Viabilidad
-st.markdown("#### 📈 Gráfico de Viabilidad (ROI vs. Precio de Venta)")
-fig_viabilidad = generar_grafico_roi_viabilidad(m2, precio_m2_reformado, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, porcentaje_financiado, interes_anual, dias_balance, roi_slider)
-st.plotly_chart(fig_viabilidad, use_container_width=True)
+# -----------------------------
+# Pestañas por escenario con detalle
+# -----------------------------
+tabs = st.tabs(list(resultados_base.keys()))
+for tab_name, tab in zip(resultados_base.keys(), tabs):
+    with tab:
+        res = resultados_base[tab_name]
+        st.subheader(f"Detalle: {tab_name}")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Precio Venta Total", f"{res['PrecioVentaTotal']:,.0f} €")
+        c2.metric("Precio Compra Máx", f"{res['PrecioCompraMax']:,.0f} €")
+        c3.metric("Inversión Total", f"{res['InversionTotal']:,.0f} €")
+        c4.metric("Viable", "✅" if res['Viable'] else "❌")
 
-# Gráfico de Punto de Equilibrio de la Reforma
-st.markdown("#### ⚖️ Gráfico de Punto de Equilibrio de la Reforma")
-fig_equilibrio = generar_grafico_punto_equilibrio_reforma(m2, precio_m2_reformado, gastos_especiales, comision_venta_pct, broker_pct, porcentaje_financiado, interes_anual, dias_balance, roi_slider)
-st.plotly_chart(fig_equilibrio, use_container_width=True)
+        st.markdown("#### Rentabilidades")
+        r1, r2, r3 = st.columns(3)
+        r1.metric("ROI unleveraged (anual)", f"{res['ROI_unleveraged_anual']*100:.2f} %")
+        r2.metric("ROI leveraged (anual)", f"{res['ROI_leveraged_anual']*100:.2f} %")
+        r3.metric("Preferred (8% inv.)", f"{res['Preferred']:,.0f} €")
 
-with st.expander("Detalles completos del cálculo"):
-    st.json(resultados)
+        with st.expander("🔍 Desglose completo"):
+            st.write(pd.Series(res).to_frame("Valor"))
+
+            st.markdown("**Distribución de la inversión**")
+            df_pie = pd.DataFrame({
+                "Componente": ["Precio Compra", "Gastos Adquisicion", "Costo Reforma", "Broker Fee"],
+                "Importe": [res["PrecioCompraMax"], res["GastosAdquisicionFijos"], res["CostoReformaTotal"], res["BrokerFee"]]
+            })
+            fig_pie = px.pie(df_pie, values='Importe', names='Componente', title=f"Desglose inversión — {tab_name}")
+            fig_pie.update_traces(textinfo='percent+label')
+            fig_pie.update_layout(template=plotly_template)
+            st.plotly_chart(fig_pie, use_container_width=True)
+
+            st.markdown("**Flujo de la financiación**")
+            st.write({
+                "Down Payment": f"{res['DownPayment']:,.0f} €",
+                "Monto Financiado": f"{res['MontoFinanciado']:,.0f} €",
+                "Intereses periodo": f"{res['InteresTotalPeriodo']:,.0f} €",
+                "Cuota mensual (aprox.)": f"{res['PagoMensual']:,.0f} €",
+                "PagoTotal periodo (aprox.)": f"{res['PagoTotalHolding']:,.0f} €"
+            })
+
+            st.markdown("**Distribución de beneficios**")
+            st.write({
+                "Ganancia Bruta (antes intereses)": f"{res['GananciaBruta']:,.0f} €",
+                "Ganancia Neta (después intereses)": f"{res['GananciaNetaLeveraged']:,.0f} €",
+                "Preferred (8%)": f"{res['Preferred']:,.0f} €",
+                "A Inversor (total)": f"{res['DistribInversor']:,.0f} €",
+                "A Management (total)": f"{res['DistribManagement']:,.0f} €"
+            })
+
+st.markdown("---")
+
+# -----------------------------
+# Nuevos gráficos de valor (ROI vs. variables)
+# -----------------------------
+st.subheader("Análisis de sensibilidad (sin apalancar)")
+st.info("Estos gráficos se basan en un precio de compra fijo (el que has introducido) para mostrar cómo la rentabilidad varía con otras métricas clave.")
+
+col_g1, col_g2 = st.columns(2)
+with col_g1:
+    fig_roi_pv = generar_grafico_roi_vs_precio_venta(m2, precio_compra_estimado, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, dias_balance, roi_slider)
+    st.plotly_chart(fig_roi_pv, use_container_width=True)
+with col_g2:
+    fig_reforma_cost = generar_grafico_ganancia_vs_coste_reforma(m2, precio_compra_estimado, precio_m2_reformado, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, dias_balance)
+    st.plotly_chart(fig_reforma_cost, use_container_width=True)
+
+fig_dias = generar_grafico_ganancia_vs_dias(m2, precio_compra_estimado, precio_m2_reformado, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, interes_anual)
+st.plotly_chart(fig_dias, use_container_width=True)
+
+# Sección de gráficos apalancados (opcional, en un expander)
+with st.expander("Análisis de apalancamiento (para comparación)"):
+    st.subheader("Análisis de apalancamiento")
+    st.warning("Estos gráficos se basan en un precio de compra fijo (el que has introducido) y una financiación del 75% para mostrar el efecto del apalancamiento.")
+    col_g3, col_g4 = st.columns(2)
+    with col_g3:
+        fig_roi_pv_lev = generar_grafico_roi_vs_precio_venta(m2, precio_compra_estimado, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, dias_balance, roi_slider, leveraged=True)
+        st.plotly_chart(fig_roi_pv_lev, use_container_width=True)
+    with col_g4:
+        fig_reforma_cost_lev = generar_grafico_ganancia_vs_coste_reforma(m2, precio_compra_estimado, precio_m2_reformado, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, dias_balance, leveraged=True)
+        st.plotly_chart(fig_reforma_cost_lev, use_container_width=True)
+    fig_dias_lev = generar_grafico_ganancia_vs_dias(m2, precio_compra_estimado, precio_m2_reformado, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, interes_anual, leveraged=True)
+    st.plotly_chart(fig_dias_lev, use_container_width=True)
+
+
+st.markdown("---")
+st.subheader("Exportar informe")
+c_export = st.columns(2)
+# Botones de exportación
+with c_export[0]:
+    if st.button("Exportar a Excel"):
+        excel_file = exportar_excel(resultados_base)
+        st.download_button(
+            label="Descargar Excel",
+            data=excel_file,
+            file_name="Informe_oportunidad.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+with c_export[1]:
+    if st.button("Exportar a PDF"):
+        # Generamos las figuras para el PDF
+        figs_unlev = [fig_roi_pv, fig_reforma_cost, fig_dias]
+        figs_lev = [fig_roi_pv_lev, fig_reforma_cost_lev, fig_dias_lev]
+        pdf_file = exportar_pdf(resultados_base, figs_unlev, figs_lev)
+        st.download_button(
+            label="Descargar PDF",
+            data=pdf_file,
+            file_name="Informe_oportunidad.pdf",
+            mime="application/pdf"
+        )
