@@ -11,6 +11,15 @@ from PIL import Image
 import tempfile
 
 
+# -----------------------------
+# LÓGICA DE LOGIN
+# -----------------------------
+# En un entorno de producción, la contraseña NO debería estar aquí.
+# Debería estar en Streamlit Secrets o en una variable de entorno.
+USERNAME = "urbeneye"
+PASSWORD = "Goreitan94" 
+
+
 st.set_page_config(layout="wide", page_title="Calculadora Inmobiliaria UrbenEye", page_icon="🏡", initial_sidebar_state="expanded")
 
 # -----------------------------
