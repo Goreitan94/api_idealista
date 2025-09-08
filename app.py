@@ -11,13 +11,32 @@ from PIL import Image
 import tempfile
 
 
-# -----------------------------
-# LÓGICA DE LOGIN
+# LÓGICA DE LOGIN (solo contraseña)
 # -----------------------------
 # En un entorno de producción, la contraseña NO debería estar aquí.
 # Debería estar en Streamlit Secrets o en una variable de entorno.
-USERNAME = "urbeneye"
 PASSWORD = "Goreitan94" 
+
+# Inicializar st.session_state para la autenticación
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+
+# Muestra el formulario de login si el usuario no está autenticado
+if not st.session_state.authenticated:
+    st.title("🔒 Iniciar Sesión en UrbenEye")
+    with st.form("login_form"):
+        st.info("Introduce la clave de acceso para continuar.")
+        password = st.text_input("Contraseña", type="password")
+        submitted = st.form_submit_button("Entrar")
+
+        if submitted:
+            if password == PASSWORD:
+                st.session_state.authenticated = True
+                st.experimental_rerun()
+            else:
+                st.error("Contraseña incorrecta. Inténtalo de nuevo.")
+    st.stop() # Detiene la ejecución del resto de la app si no se ha iniciado sesión
+
 
 
 st.set_page_config(layout="wide", page_title="Calculadora Inmobiliaria UrbenEye", page_icon="🏡", initial_sidebar_state="expanded")
