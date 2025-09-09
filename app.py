@@ -170,7 +170,6 @@ def calcular_resultados(
             r_ann_obj = roi_objetivo / 100.0
             roi_abs_obj = r_ann_obj * t
             
-            # --- CORRECCIÓN CRÍTICA AQUÍ ---
             # Nueva fórmula matemática directa para calcular el precio de compra
             denom_inv = 1.0 + roi_abs_obj
             inv_total_obj = pv_neto / denom_inv if denom_inv > 0 else 0
@@ -179,7 +178,6 @@ def calcular_resultados(
             denominador_pc = 1.0 + (itp_pct / 100.0) + (broker_pct / 100.0) * (1 + IVA)
             
             precio_compra = max(numerador_pc / denominador_pc, 0.0)
-            # --- FIN DE LA CORRECCIÓN ---
             
             itp = precio_compra * (itp_pct / 100.0)
             broker_fee = precio_compra * (broker_pct / 100.0) * (1 + IVA)
@@ -244,6 +242,7 @@ def calcular_resultados(
             "GananciaNetaLeveraged": ganancia_neta_lev,
             "ROI_unleveraged_abs": roi_abs,
             "ROI_unleveraged_anual": roi_anual_unlev,
+            "ROI_leveraged_abs": roi_abs_lev,
             "ROI_leveraged_anual": roi_anual_lev,
             "Preferred": preferred,
             "DistribInversor": distrib_inversor,
@@ -378,8 +377,8 @@ with st.sidebar:
     
     st.markdown("### Parámetros de mercado / propiedad")
     m2 = st.number_input("Metros cuadrados (m²)", value=st.session_state.get("m2", DEFAULTS["m2"]), step=1, key="m2")
-    precio_m2_reformado = st.number_input("Precio venta €/m² (reformado)", value=st.session_state.get("precio_m2_reformado", DEFAULTS["precio_m2_reformado"]), step=50, key="precio_m2_reformado")
-    precio_m2_noreformado = st.number_input("Precio venta €/m² (sin reformar)", value=st.session_state.get("precio_m2_noreformado", DEFAULTS["precio_m2_noreformado"]), step=50, key="precio_m2_noreformado")
+    precio_m2_reformado = st.number_input("Precio venta €/m² (reformado)", value=st.session_state.get("precio_m2_reformado", DEFAULTS["precio_m2_reformado"]), step=200, key="precio_m2_reformado")
+    precio_m2_noreformado = st.number_input("Precio venta €/m² (sin reformar)", value=st.session_state.get("precio_m2_noreformado", DEFAULTS["precio_m2_noreformado"]), step=200, key="precio_m2_noreformado")
     st.markdown("---")
     
     st.markdown("### ROI objetivo y días en balance")
@@ -389,7 +388,7 @@ with st.sidebar:
     st.markdown("---")
 
     st.markdown("### Costes y financiación")
-    gastos_especiales = st.number_input("Gastos especiales (€)", value=st.session_state.get("gastos_especiales", DEFAULTS["gastos_especiales"]), step=50, key="gastos_especiales")
+    gastos_especiales = st.number_input("Gastos especiales (€)", value=st.session_state.get("gastos_especiales", DEFAULTS["gastos_especiales"]), step=1000, key="gastos_especiales")
     itp_pct = st.selectbox("ITP (%)", options=[2, 8], index=1 if DEFAULTS["itp_pct"] == 8 else 0, key="itp_pct")
     comision_venta_pct = st.selectbox("Comisión de venta (%)", options=[1, 3], index=1 if DEFAULTS["comision_venta_pct"] == 3 else 0, key="comision_venta_pct")
     broker_pct = st.number_input("Broker fee (%)", value=st.session_state.get("broker_pct", DEFAULTS["broker_pct"]), step=0.5, key="broker_pct")
