@@ -11,6 +11,7 @@ from PIL import Image
 import tempfile
 
 
+# -----------------------------
 # LÓGICA DE LOGIN (solo contraseña)
 # -----------------------------
 # En un entorno de producción, la contraseña NO debería estar aquí.
@@ -38,7 +39,9 @@ if not st.session_state.authenticated:
     st.stop() # Detiene la ejecución del resto de la app si no se ha iniciado sesión
 
 
-
+# -----------------------------
+# RESTO DE TU APP (DESDE AQUÍ HACIA ABAJO)
+# -----------------------------
 st.set_page_config(layout="wide", page_title="Calculadora Inmobiliaria UrbenEye", page_icon="🏡", initial_sidebar_state="expanded")
 
 # -----------------------------
@@ -56,7 +59,7 @@ DEFAULTS = {
     "broker_pct": 0.0,
     "porcentaje_financiado": 75,
     "interes_anual": 0.0,
-    "precio_compra_estimado": 200000 # Nuevo valor por defecto
+    "precio_compra_estimado": 200000 
 }
 
 # -----------------------------
@@ -323,7 +326,7 @@ def generar_grafico_ganancia_vs_dias(m2, pc_estimado, precio_m2_reformado, preci
     return fig
 
 # -----------------------------
-# Exportadores (Excel y PDF)
+# Exportadores (Excel)
 # -----------------------------
 def exportar_excel(resultados):
     out = BytesIO()
@@ -353,37 +356,6 @@ def exportar_excel(resultados):
     out.seek(0)
     return out
 
-def exportar_pdf(resultados, figs_unlev, figs_lev):
-    out = BytesIO()
-    doc = SimpleDocTemplate(out)
-    styles = getSampleStyleSheet()
-    elems = []
-    elems.append(Paragraph("UrbenEye - Reporte de Oportunidad", styles['Title']))
-    elems.append(Spacer(1, 8))
-    
-    # Añadir gráficos de ROI sin apalancar
-    if figs_unlev:
-        elems.append(Paragraph("<b>Análisis de sensibilidad (sin apalancar)</b>", styles['Heading2']))
-        elems.append(Spacer(1, 6))
-        for fig in figs_unlev:
-            tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-            fig.write_image(tmp.name, scale=2)
-            elems.append(RLImage(tmp.name, width=450, height=250))
-            elems.append(Spacer(1, 12))
-    
-    # Añadir gráficos de ROI apalancado
-    if figs_lev:
-        elems.append(Paragraph("<b>Análisis de sensibilidad (apalancado)</b>", styles['Heading2']))
-        elems.append(Spacer(1, 6))
-        for fig in figs_lev:
-            tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-            fig.write_image(tmp.name, scale=2)
-            elems.append(RLImage(tmp.name, width=450, height=250))
-            elems.append(Spacer(1, 12))
-
-    doc.build(elems)
-    out.seek(0)
-    return out
 # -----------------------------
 # Interfaz - Inputs
 # -----------------------------
@@ -570,7 +542,7 @@ with st.expander("Análisis de apalancamiento (para comparación)"):
 st.markdown("---")
 st.subheader("Exportar informe")
 c_export = st.columns(2)
-# Botones de exportación
+
 with c_export[0]:
     if st.button("Exportar a Excel"):
         excel_file = exportar_excel(resultados_base)
@@ -580,15 +552,7 @@ with c_export[0]:
             file_name="Informe_oportunidad.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 with c_export[1]:
-    if st.button("Exportar a PDF"):
-        # Generamos las figuras para el PDF
-        figs_unlev = [fig_roi_pv, fig_reforma_cost, fig_dias]
-        figs_lev = [fig_roi_pv_lev, fig_reforma_cost_lev, fig_dias_lev]
-        pdf_file = exportar_pdf(resultados_base, figs_unlev, figs_lev)
-        st.download_button(
-            label="Descargar PDF",
-            data=pdf_file,
-            file_name="Informe_oportunidad.pdf",
-            mime="application/pdf"
-        )
+    st.button("Exportar a PDF")
+    st.info("Para exportar, haz clic en el botón y luego usa la opción 'Imprimir' de tu navegador (Ctrl+P o Cmd+P) y selecciona 'Guardar como PDF' o 'Microsoft Print to PDF' como destino.")
