@@ -12,7 +12,7 @@ from io import BytesIO
 # -----------------------------
 # En un entorno de producción, la contraseña NO debería estar aquí.
 # Debería estar en Streamlit Secrets o en una variable de entorno.
-PASSWORD = "Goreitan94" 
+PASSWORD = "la-clave-secreta" 
 
 # Inicializar st.session_state para la autenticación
 if 'authenticated' not in st.session_state:
@@ -55,7 +55,7 @@ DEFAULTS = {
     "broker_pct": 0.0,
     "porcentaje_financiado": 75,
     "interes_anual": 0.0,
-    "itp_pct": 8 # Nuevo valor por defecto para ITP
+    "itp_pct": 8 
 }
 
 # -----------------------------
@@ -124,7 +124,7 @@ def calcular_resultados(
     IVA = 0.21
     notaria = 800.0
     registro = 200.0
-
+    
     tipos = {
         "Sin Reforma": 0,
         "Lavado de cara": 500,
@@ -137,7 +137,6 @@ def calcular_resultados(
 
     resultados = {}
 
-    # Variables auxiliares
     t = dias_balance / 365.0
     
     for nombre, coste_m2 in tipos.items():
@@ -157,42 +156,34 @@ def calcular_resultados(
         comision_venta = pv_total * (comision_venta_pct / 100.0) * (1 + IVA)
         pv_neto = pv_total - comision_venta
         
-        broker_factor = (broker_pct / 100.0) * (1 + IVA)
+        gastos_fijos = notaria + registro + gastos_especiales
 
         if precio_compra_fijo is not None:
             # Flujo para gráficos de valor: el precio de compra es fijo
             precio_compra = precio_compra_fijo
             itp = precio_compra * (itp_pct / 100.0)
-            gastos_fijos = notaria + registro + gastos_especiales + itp
-            broker_fee = precio_compra * broker_factor
-            inversion_total = precio_compra + gastos_fijos + coste_reforma_total + broker_fee
+            broker_fee = precio_compra * (broker_pct / 100.0) * (1 + IVA)
+            
+            inversion_total = precio_compra + gastos_fijos + itp + coste_reforma_total + broker_fee
         else:
             # Flujo normal: se calcula el precio de compra en base al ROI objetivo
             r_ann_obj = roi_objetivo / 100.0
             roi_abs_obj = r_ann_obj * t
             
-            # Cálculo iterativo para el precio de compra con ITP
-            precio_compra_estimado = 100000.0 # Valor inicial
-            for _ in range(5): # 5 iteraciones para convergencia
-                itp = precio_compra_estimado * (itp_pct / 100.0)
-                gastos_fijos = notaria + registro + gastos_especiales + itp
-                broker_fee = precio_compra_estimado * broker_factor
-                inversion_total_estimado = precio_compra_estimado + gastos_fijos + coste_reforma_total + broker_fee
-                ganancia_bruta_estimada = pv_neto - inversion_total_estimado
-                
-                roi_abs_estimado = ganancia_bruta_estimada / inversion_total_estimado if inversion_total_estimado > 0 else 0
-                
-                # Ajuste del precio de compra
-                if roi_abs_estimado > roi_abs_obj:
-                    precio_compra_estimado *= 1.0 - (roi_abs_estimado - roi_abs_obj)
-                else:
-                    precio_compra_estimado *= 1.0 + (roi_abs_obj - roi_abs_estimado)
-
-            precio_compra = max(precio_compra_estimado, 0.0)
+            # --- CORRECCIÓN CRÍTICA AQUÍ ---
+            # Nueva fórmula matemática directa para calcular el precio de compra
+            denom_inv = 1.0 + roi_abs_obj
+            inv_total_obj = pv_neto / denom_inv if denom_inv > 0 else 0
+            
+            numerador_pc = inv_total_obj - gastos_fijos - coste_reforma_total
+            denominador_pc = 1.0 + (itp_pct / 100.0) + (broker_pct / 100.0) * (1 + IVA)
+            
+            precio_compra = max(numerador_pc / denominador_pc, 0.0)
+            # --- FIN DE LA CORRECCIÓN ---
+            
             itp = precio_compra * (itp_pct / 100.0)
-            gastos_fijos = notaria + registro + gastos_especiales + itp
-            broker_fee = precio_compra * broker_factor
-            inversion_total = precio_compra + gastos_fijos + coste_reforma_total + broker_fee
+            broker_fee = precio_compra * (broker_pct / 100.0) * (1 + IVA)
+            inversion_total = precio_compra + gastos_fijos + itp + coste_reforma_total + broker_fee
 
 
         ganancia_bruta = pv_neto - inversion_total
@@ -253,7 +244,6 @@ def calcular_resultados(
             "GananciaNetaLeveraged": ganancia_neta_lev,
             "ROI_unleveraged_abs": roi_abs,
             "ROI_unleveraged_anual": roi_anual_unlev,
-            "ROI_leveraged_abs": roi_abs_lev,
             "ROI_leveraged_anual": roi_anual_lev,
             "Preferred": preferred,
             "DistribInversor": distrib_inversor,
