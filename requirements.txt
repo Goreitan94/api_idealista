@@ -7,5 +7,4 @@ geopandas
 requests
 openpyxl
 reportlab
-kaleido
 
