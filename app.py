@@ -5,10 +5,6 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from io import BytesIO
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage
-from reportlab.lib.styles import getSampleStyleSheet
-from PIL import Image
-import tempfile
 
 
 # -----------------------------
@@ -16,7 +12,7 @@ import tempfile
 # -----------------------------
 # En un entorno de producción, la contraseña NO debería estar aquí.
 # Debería estar en Streamlit Secrets o en una variable de entorno.
-PASSWORD = "Goreitan94" 
+PASSWORD = "la-clave-secreta" 
 
 # Inicializar st.session_state para la autenticación
 if 'authenticated' not in st.session_state:
@@ -36,7 +32,7 @@ if not st.session_state.authenticated:
                 st.experimental_rerun()
             else:
                 st.error("Contraseña incorrecta. Inténtalo de nuevo.")
-    st.stop() # Detiene la ejecución del resto de la app si no se ha iniciado sesión
+    st.stop()
 
 
 # -----------------------------
@@ -59,7 +55,7 @@ DEFAULTS = {
     "broker_pct": 0.0,
     "porcentaje_financiado": 75,
     "interes_anual": 0.0,
-    "precio_compra_estimado": 200000 
+    "itp_pct": 8 # Nuevo valor por defecto para ITP
 }
 
 # -----------------------------
@@ -117,8 +113,9 @@ def calcular_resultados(
     interes_anual,
     dias_balance,
     roi_objetivo,
-    precio_compra_fijo=None, # Parámetro opcional para los gráficos
-    coste_reforma_fijo=None # Parámetro opcional para los gráficos
+    itp_pct,
+    precio_compra_fijo=None,
+    coste_reforma_fijo=None
 ):
     """
     Calcula todos los escenarios (Sin reforma + 3 reformas) y devuelve un dict con resultados detallados.
@@ -127,7 +124,6 @@ def calcular_resultados(
     IVA = 0.21
     notaria = 800.0
     registro = 200.0
-    gastos_fijos = notaria + registro + gastos_especiales
 
     tipos = {
         "Sin Reforma": 0,
@@ -161,26 +157,42 @@ def calcular_resultados(
         comision_venta = pv_total * (comision_venta_pct / 100.0) * (1 + IVA)
         pv_neto = pv_total - comision_venta
         
-        # Broker factor (incluye IVA)
         broker_factor = (broker_pct / 100.0) * (1 + IVA)
 
         if precio_compra_fijo is not None:
             # Flujo para gráficos de valor: el precio de compra es fijo
             precio_compra = precio_compra_fijo
+            itp = precio_compra * (itp_pct / 100.0)
+            gastos_fijos = notaria + registro + gastos_especiales + itp
             broker_fee = precio_compra * broker_factor
             inversion_total = precio_compra + gastos_fijos + coste_reforma_total + broker_fee
         else:
             # Flujo normal: se calcula el precio de compra en base al ROI objetivo
             r_ann_obj = roi_objetivo / 100.0
             roi_abs_obj = r_ann_obj * t
-            denom_inv = 1.0 + roi_abs_obj
-            inv_total_obj = pv_neto / denom_inv if denom_inv > 0 else 0
-            const_b = gastos_fijos + coste_reforma_total
-            denom_pc = 1.0 + broker_factor
-            precio_compra = max((inv_total_obj - const_b) / denom_pc, 0.0)
             
+            # Cálculo iterativo para el precio de compra con ITP
+            precio_compra_estimado = 100000.0 # Valor inicial
+            for _ in range(5): # 5 iteraciones para convergencia
+                itp = precio_compra_estimado * (itp_pct / 100.0)
+                gastos_fijos = notaria + registro + gastos_especiales + itp
+                broker_fee = precio_compra_estimado * broker_factor
+                inversion_total_estimado = precio_compra_estimado + gastos_fijos + coste_reforma_total + broker_fee
+                ganancia_bruta_estimada = pv_neto - inversion_total_estimado
+                
+                roi_abs_estimado = ganancia_bruta_estimada / inversion_total_estimado if inversion_total_estimado > 0 else 0
+                
+                # Ajuste del precio de compra
+                if roi_abs_estimado > roi_abs_obj:
+                    precio_compra_estimado *= 1.0 - (roi_abs_estimado - roi_abs_obj)
+                else:
+                    precio_compra_estimado *= 1.0 + (roi_abs_obj - roi_abs_estimado)
+
+            precio_compra = max(precio_compra_estimado, 0.0)
+            itp = precio_compra * (itp_pct / 100.0)
+            gastos_fijos = notaria + registro + gastos_especiales + itp
             broker_fee = precio_compra * broker_factor
-            inversion_total = precio_compra + const_b + broker_fee
+            inversion_total = precio_compra + gastos_fijos + coste_reforma_total + broker_fee
 
 
         ganancia_bruta = pv_neto - inversion_total
@@ -225,6 +237,7 @@ def calcular_resultados(
             "PrecioVentaTotal": pv_total,
             "PrecioVentaNeto": pv_neto,
             "PrecioCompraMax": precio_compra,
+            "ITP": itp,
             "BrokerFee": broker_fee,
             "GastosAdquisicionFijos": gastos_fijos,
             "CostoReformaBase": coste_reforma_base,
@@ -254,7 +267,7 @@ def calcular_resultados(
 # -----------------------------
 # Generadores de gráficos de valor (ROI vs. variables)
 # -----------------------------
-def generar_grafico_roi_vs_precio_venta(m2, pc_estimado, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, dias_balance, roi_objetivo, leveraged=False):
+def generar_grafico_roi_vs_precio_venta(m2, pc_fijo, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, dias_balance, roi_objetivo, itp_pct, leveraged=False):
     precios = np.arange(1000, 5000 + 1, step=100)
     data = []
     roi_key = "ROI_leveraged_anual" if leveraged else "ROI_unleveraged_anual"
@@ -266,8 +279,9 @@ def generar_grafico_roi_vs_precio_venta(m2, pc_estimado, precio_m2_noreformado, 
             gastos_especiales=gastos_especiales, comision_venta_pct=comision_venta_pct,
             broker_pct=broker_pct, porcentaje_financiado=0 if not leveraged else 75,
             interes_anual=0 if not leveraged else 0, dias_balance=dias_balance,
-            roi_objetivo=roi_objetivo, precio_compra_fijo=pc_estimado,
-            coste_reforma_fijo=DEFAULTS["precio_m2_reformado"]-DEFAULTS["precio_m2_noreformado"]
+            roi_objetivo=roi_objetivo, precio_compra_fijo=pc_fijo,
+            coste_reforma_fijo=DEFAULTS["precio_m2_reformado"]-DEFAULTS["precio_m2_noreformado"],
+            itp_pct=itp_pct
         )
         roi_val = res["Lavado de cara"][roi_key]
         data.append((p, roi_val * 100))
@@ -279,7 +293,7 @@ def generar_grafico_roi_vs_precio_venta(m2, pc_estimado, precio_m2_noreformado, 
     return fig
 
 
-def generar_grafico_ganancia_vs_coste_reforma(m2, pc_estimado, precio_m2_reformado, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, dias_balance, leveraged=False):
+def generar_grafico_ganancia_vs_coste_reforma(m2, pc_fijo, precio_m2_reformado, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, dias_balance, itp_pct, leveraged=False):
     costes = np.arange(0, 1500 + 1, 50)
     data = []
     ganancia_key = "GananciaNetaLeveraged" if leveraged else "GananciaBruta"
@@ -291,7 +305,8 @@ def generar_grafico_ganancia_vs_coste_reforma(m2, pc_estimado, precio_m2_reforma
             gastos_especiales=gastos_especiales, comision_venta_pct=comision_venta_pct,
             broker_pct=broker_pct, porcentaje_financiado=0 if not leveraged else 75,
             interes_anual=0 if not leveraged else 0, dias_balance=dias_balance,
-            roi_objetivo=0, precio_compra_fijo=pc_estimado, coste_reforma_fijo=cost_m2
+            roi_objetivo=0, precio_compra_fijo=pc_fijo, coste_reforma_fijo=cost_m2,
+            itp_pct=itp_pct
         )
         ganancia_val = res["Lavado de cara"][ganancia_key]
         data.append((cost_m2, ganancia_val))
@@ -302,28 +317,30 @@ def generar_grafico_ganancia_vs_coste_reforma(m2, pc_estimado, precio_m2_reforma
     fig.update_layout(xaxis_title="Coste de Reforma €/m²", yaxis_title=f"{titulo} (€)")
     return fig
 
-def generar_grafico_ganancia_vs_dias(m2, pc_estimado, precio_m2_reformado, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, interes_anual, leveraged=False):
+def generar_grafico_roi_vs_dias(m2, pc_fijo, precio_m2_reformado, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, interes_anual, itp_pct, leveraged=False):
     dias = np.arange(10, 365 + 1, 10)
     data = []
-    ganancia_key = "GananciaNetaLeveraged" if leveraged else "GananciaBruta"
-    titulo = "Ganancia Neta" if leveraged else "Ganancia Bruta"
-
+    roi_key = "ROI_leveraged_anual" if leveraged else "ROI_unleveraged_anual"
+    titulo = "ROI Anual"
+    
     for d in dias:
         res = calcular_resultados(
             m2=m2, precio_m2_reformado=precio_m2_reformado, precio_m2_noreformado=precio_m2_noreformado,
             gastos_especiales=gastos_especiales, comision_venta_pct=comision_venta_pct,
             broker_pct=broker_pct, porcentaje_financiado=0 if not leveraged else 75,
             interes_anual=0 if not leveraged else interes_anual, dias_balance=d,
-            roi_objetivo=0, precio_compra_fijo=pc_estimado,
-            coste_reforma_fijo=DEFAULTS["precio_m2_reformado"]-DEFAULTS["precio_m2_noreformado"]
+            roi_objetivo=0, precio_compra_fijo=pc_fijo,
+            coste_reforma_fijo=DEFAULTS["precio_m2_reformado"]-DEFAULTS["precio_m2_noreformado"],
+            itp_pct=itp_pct
         )
-        ganancia_val = res["Lavado de cara"][ganancia_key]
-        data.append((d, ganancia_val))
-    df = pd.DataFrame(data, columns=["Dias", f"{titulo}_€"])
+        roi_val = res["Lavado de cara"][roi_key]
+        data.append((d, roi_val * 100))
+    df = pd.DataFrame(data, columns=["Dias", f"{titulo}_%"])
 
-    fig = px.line(df, x="Dias", y=f"{titulo}_€", title=f"{titulo} vs Días en el Mercado", template=plotly_template)
-    fig.update_layout(xaxis_title="Días en el mercado", yaxis_title=f"{titulo} (€)")
+    fig = px.line(df, x="Dias", y=f"{titulo}_%", title=f"{titulo} vs Días en el Mercado", template=plotly_template)
+    fig.update_layout(xaxis_title="Días en el mercado", yaxis_title=f"{titulo} (%)")
     return fig
+
 
 # -----------------------------
 # Exportadores (Excel)
@@ -352,7 +369,7 @@ def exportar_excel(resultados):
         # sheets por escenario
         for esc, data in resultados.items():
             df = pd.DataFrame(list(data.items()), columns=['Métrica', 'Valor'])
-            df.to_excel(writer, index=False, sheet_name=esc[:31])  # sheet name <=31 chars
+            df.to_excel(writer, index=False, sheet_name=esc[:31])
     out.seek(0)
     return out
 
@@ -373,7 +390,6 @@ with st.sidebar:
     m2 = st.number_input("Metros cuadrados (m²)", value=st.session_state.get("m2", DEFAULTS["m2"]), step=1, key="m2")
     precio_m2_reformado = st.number_input("Precio venta €/m² (reformado)", value=st.session_state.get("precio_m2_reformado", DEFAULTS["precio_m2_reformado"]), step=50, key="precio_m2_reformado")
     precio_m2_noreformado = st.number_input("Precio venta €/m² (sin reformar)", value=st.session_state.get("precio_m2_noreformado", DEFAULTS["precio_m2_noreformado"]), step=50, key="precio_m2_noreformado")
-    precio_compra_estimado = st.number_input("Precio de compra estimado (€)", value=st.session_state.get("precio_compra_estimado", DEFAULTS["precio_compra_estimado"]), step=1000, key="precio_compra_estimado")
     st.markdown("---")
     
     st.markdown("### ROI objetivo y días en balance")
@@ -384,6 +400,7 @@ with st.sidebar:
 
     st.markdown("### Costes y financiación")
     gastos_especiales = st.number_input("Gastos especiales (€)", value=st.session_state.get("gastos_especiales", DEFAULTS["gastos_especiales"]), step=50, key="gastos_especiales")
+    itp_pct = st.selectbox("ITP (%)", options=[2, 8], index=1 if DEFAULTS["itp_pct"] == 8 else 0, key="itp_pct")
     comision_venta_pct = st.selectbox("Comisión de venta (%)", options=[1, 3], index=1 if DEFAULTS["comision_venta_pct"] == 3 else 0, key="comision_venta_pct")
     broker_pct = st.number_input("Broker fee (%)", value=st.session_state.get("broker_pct", DEFAULTS["broker_pct"]), step=0.5, key="broker_pct")
     porcentaje_financiado = st.number_input("Porcentaje financiado (%)", value=st.session_state.get("porcentaje_financiado", DEFAULTS["porcentaje_financiado"]), min_value=0, max_value=100, step=1, key="porcentaje_financiado")
@@ -403,7 +420,7 @@ resultados_base = calcular_resultados(
     interes_anual=interes_anual,
     dias_balance=dias_balance,
     roi_objetivo=roi_slider,
-    precio_compra_fijo=None # Se usa el flujo de cálculo por ROI
+    itp_pct=itp_pct
 )
 
 # -----------------------------
@@ -477,10 +494,10 @@ for tab_name, tab in zip(resultados_base.keys(), tabs):
         with st.expander("🔍 Desglose completo"):
             st.write(pd.Series(res).to_frame("Valor"))
 
-            st.markdown("**Distribución de la inversión**")
+            st.markdown("**Desglose de la inversión**")
             df_pie = pd.DataFrame({
-                "Componente": ["Precio Compra", "Gastos Adquisicion", "Costo Reforma", "Broker Fee"],
-                "Importe": [res["PrecioCompraMax"], res["GastosAdquisicionFijos"], res["CostoReformaTotal"], res["BrokerFee"]]
+                "Componente": ["Precio Compra", "Gastos Adquisicion", "Costo Reforma", "Broker Fee", "ITP"],
+                "Importe": [res["PrecioCompraMax"], res["GastosAdquisicionFijos"], res["CostoReformaTotal"], res["BrokerFee"], res["ITP"]]
             })
             fig_pie = px.pie(df_pie, values='Importe', names='Componente', title=f"Desglose inversión — {tab_name}")
             fig_pie.update_traces(textinfo='percent+label')
@@ -511,31 +528,34 @@ st.markdown("---")
 # Nuevos gráficos de valor (ROI vs. variables)
 # -----------------------------
 st.subheader("Análisis de sensibilidad (sin apalancar)")
-st.info("Estos gráficos se basan en un precio de compra fijo (el que has introducido) para mostrar cómo la rentabilidad varía con otras métricas clave.")
+st.info("Estos gráficos se basan en un precio de compra fijo para mostrar cómo la rentabilidad varía con otras métricas clave.")
+
+pc_base = resultados_base["Lavado de cara"]["PrecioCompraMax"]
+itp_base = st.session_state.get("itp_pct", DEFAULTS["itp_pct"])
 
 col_g1, col_g2 = st.columns(2)
 with col_g1:
-    fig_roi_pv = generar_grafico_roi_vs_precio_venta(m2, precio_compra_estimado, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, dias_balance, roi_slider)
+    fig_roi_pv = generar_grafico_roi_vs_precio_venta(m2, pc_base, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, dias_balance, roi_slider, itp_base)
     st.plotly_chart(fig_roi_pv, use_container_width=True)
 with col_g2:
-    fig_reforma_cost = generar_grafico_ganancia_vs_coste_reforma(m2, precio_compra_estimado, precio_m2_reformado, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, dias_balance)
+    fig_reforma_cost = generar_grafico_ganancia_vs_coste_reforma(m2, pc_base, precio_m2_reformado, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, dias_balance, itp_base)
     st.plotly_chart(fig_reforma_cost, use_container_width=True)
 
-fig_dias = generar_grafico_ganancia_vs_dias(m2, precio_compra_estimado, precio_m2_reformado, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, interes_anual)
+fig_dias = generar_grafico_roi_vs_dias(m2, pc_base, precio_m2_reformado, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, interes_anual, itp_base)
 st.plotly_chart(fig_dias, use_container_width=True)
 
 # Sección de gráficos apalancados (opcional, en un expander)
 with st.expander("Análisis de apalancamiento (para comparación)"):
     st.subheader("Análisis de apalancamiento")
-    st.warning("Estos gráficos se basan en un precio de compra fijo (el que has introducido) y una financiación del 75% para mostrar el efecto del apalancamiento.")
+    st.warning("Estos gráficos se basan en un precio de compra fijo y una financiación del 75% para mostrar el efecto del apalancamiento.")
     col_g3, col_g4 = st.columns(2)
     with col_g3:
-        fig_roi_pv_lev = generar_grafico_roi_vs_precio_venta(m2, precio_compra_estimado, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, dias_balance, roi_slider, leveraged=True)
+        fig_roi_pv_lev = generar_grafico_roi_vs_precio_venta(m2, pc_base, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, dias_balance, roi_slider, itp_base, leveraged=True)
         st.plotly_chart(fig_roi_pv_lev, use_container_width=True)
     with col_g4:
-        fig_reforma_cost_lev = generar_grafico_ganancia_vs_coste_reforma(m2, precio_compra_estimado, precio_m2_reformado, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, dias_balance, leveraged=True)
+        fig_reforma_cost_lev = generar_grafico_ganancia_vs_coste_reforma(m2, pc_base, precio_m2_reformado, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, dias_balance, itp_base, leveraged=True)
         st.plotly_chart(fig_reforma_cost_lev, use_container_width=True)
-    fig_dias_lev = generar_grafico_ganancia_vs_dias(m2, precio_compra_estimado, precio_m2_reformado, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, interes_anual, leveraged=True)
+    fig_dias_lev = generar_grafico_roi_vs_dias(m2, pc_base, precio_m2_reformado, precio_m2_noreformado, gastos_especiales, comision_venta_pct, broker_pct, interes_anual, itp_base, leveraged=True)
     st.plotly_chart(fig_dias_lev, use_container_width=True)
 
 
