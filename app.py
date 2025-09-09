@@ -12,7 +12,7 @@ from io import BytesIO
 # -----------------------------
 # En un entorno de producción, la contraseña NO debería estar aquí.
 # Debería estar en Streamlit Secrets o en una variable de entorno.
-PASSWORD = "la-clave-secreta" 
+PASSWORD = "Goreitan94" 
 
 # Inicializar st.session_state para la autenticación
 if 'authenticated' not in st.session_state:
