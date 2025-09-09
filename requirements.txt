@@ -6,5 +6,5 @@ matplotlib
 geopandas
 requests
 openpyxl
-
+reportlab
 
