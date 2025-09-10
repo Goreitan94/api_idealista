@@ -88,21 +88,27 @@ async function markEmailAsRead(token, messageId) {
   });
 }
 
-// --- FUNCIÓN DE PARSEO (VERSIÓN FINAL) ---
+// --- FUNCIÓN DE PARSEO (VERSIÓN FINAL Y ROBUSTA) ---
 
 function parseEmail(json) {
   let html = json["body"]["content"] || "";
   let subject = json["subject"] || "";
   let text = html.replace(/<[^>]*>/g, "\n").replace(/\n+/g, "\n").trim();
-  let nombre = "", email = "", telefono = "", referencia = "", enlace = "", mensaje = text;
+  let nombre = "", email = "", telefono = "-", referencia = "", enlace = "", mensaje = text;
 
-  // Nueva y robusta expresión para el teléfono:
-  const matchTel = text.match(/[679][\s\.\-]?\d{2}[\s\.\-]?\d{3}[\s\.\-]?\d{3}\b/);
-  if (matchTel) {
-    telefono = matchTel[0].replace(/[\s\.\-]/g, '');
+  // NUEVA LÓGICA: Buscar el teléfono de manera más robusta
+  const potentialMatches = text.match(/[679][\d\s\.\-]{8,}/g);
+  if (potentialMatches) {
+    for (const potential of potentialMatches) {
+      const cleanedNumber = potential.replace(/[\s\.\-]/g, '');
+      if (cleanedNumber.length === 9) {
+        telefono = cleanedNumber;
+        break; // Una vez que encontramos uno válido, salimos
+      }
+    }
   }
 
-  // Expresión para el email (mejorada para mayor seguridad)
+  // Expresión para el email
   const matchEmail = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
   if (matchEmail) email = matchEmail[0];
 
@@ -126,7 +132,7 @@ function parseEmail(json) {
   return {
     nombre_cliente: nombre || "-",
     email_cliente: email || "-",
-    telefono: telefono || "-",
+    telefono: telefono,
     referencia: referencia || "-",
     enlace_inmueble: enlace || "-",
     direccion_inmueble: direccion || "-",
