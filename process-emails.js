@@ -1,3 +1,4 @@
+// app.js
 const axios = require('axios');
 
 // --- CONFIGURACIÓN ---
@@ -34,7 +35,7 @@ async function main() {
 
     for (const email of emails) {
       console.log(`Procesando correo con asunto: ${email.subject}`);
-      
+
       const parsedData = parseEmail(email);
       console.log("Datos extraídos:", JSON.stringify(parsedData, null, 2));
 
@@ -53,7 +54,7 @@ async function main() {
   } catch (error) {
     console.error("Ocurrió un error en el flujo principal:", error.message);
     if (error.response) {
-        console.error("Detalles del error:", JSON.stringify(error.response.data, null, 2));
+      console.error("Detalles del error:", JSON.stringify(error.response.data, null, 2));
     }
   }
 }
@@ -81,13 +82,13 @@ async function getUnreadEmails(token) {
 }
 
 async function markEmailAsRead(token, messageId) {
-    const url = `https://graph.microsoft.com/v1.0/users/${OUTLOOK_USER_EMAIL}/messages/${messageId}`;
-    await axios.patch(url, { isRead: true }, {
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
-    });
+  const url = `https://graph.microsoft.com/v1.0/users/${OUTLOOK_USER_EMAIL}/messages/${messageId}`;
+  await axios.patch(url, { isRead: true }, {
+    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+  });
 }
 
-// --- FUNCIÓN DE PARSEO (VERSIÓN CORREGIDA Y MEJORADA) ---
+// --- FUNCIÓN DE PARSEO (VERSIÓN FINAL) ---
 
 function parseEmail(json) {
   let html = json["body"]["content"] || "";
@@ -95,20 +96,20 @@ function parseEmail(json) {
   let text = html.replace(/<[^>]*>/g, "\n").replace(/\n+/g, "\n").trim();
   let nombre = "", email = "", telefono = "", referencia = "", enlace = "", mensaje = text;
 
-  // --- MEJORA CRÍTICA: Búsqueda de teléfono mucho más específica ---
-  // Busca un número español de 9 dígitos (que empiece por 6, 7 o 9), con o sin espacios.
-  const matchTel = text.match(/(?:(?:\+|00)34[\s]?)?([679]\d{2}[\s]?\d{3}[\s]?\d{3})\b/);
+  // Nueva y robusta expresión para el teléfono:
+  const matchTel = text.match(/[679][\s\.\-]?\d{2}[\s\.\-]?\d{3}[\s\.\-]?\d{3}\b/);
   if (matchTel) {
-    telefono = matchTel[1].replace(/\s/g, ''); // Cogemos el grupo capturado y quitamos espacios
+    telefono = matchTel[0].replace(/[\s\.\-]/g, '');
   }
 
-  const matchEmail = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}/);
+  // Expresión para el email (mejorada para mayor seguridad)
+  const matchEmail = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
   if (matchEmail) email = matchEmail[0];
 
   // La extracción del nombre desde el asunto es la más fiable
   const matchNombre = subject.match(/Nuevo mensaje de (.+?) sobre/i);
-  if(matchNombre) {
-      nombre = matchNombre[1].trim();
+  if (matchNombre) {
+    nombre = matchNombre[1].trim();
   }
 
   const matchRef = subject.match(/ref\.?\s*interna\s*([^,]+)/i) || subject.match(/con ref: ([^,]+)/i);
@@ -116,7 +117,7 @@ function parseEmail(json) {
 
   const matchCodigo = text.match(/C[oó]digo del anuncio:\s*(\d+)/i);
   if (matchCodigo) {
-    enlace = `https://www.idealista.com/inmble/${matchCodigo[1]}`;
+    enlace = `https://www.idealista.com/inmueble/${matchCodigo[1]}`;
   }
 
   const matchDireccion = subject.match(/sobre tu inmueble, (.+)$/i);
