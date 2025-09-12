@@ -76,52 +76,41 @@ def fig_html(fig) -> str:
 # NUEVA FUNCION: Generar mapa del barrio
 # ==============================
 def generar_mapa_barrio(barrio_nombre, geojson_gdf):
-    # Intentar encontrar el barrio en el GeoDataFrame
+    df_mapa = geojson_gdf.copy()
+    
+    # Añadimos una columna para el color de los polígonos
+    df_mapa['color_del_mapa'] = '#404040' # Color por defecto para todos
+    
+    # Asignamos el color de acento al barrio seleccionado
     barrio_slug = slugify(barrio_nombre)
-    gdf_barrio = geojson_gdf[geojson_gdf['slug'] == barrio_slug]
+    df_mapa.loc[df_mapa['slug'] == barrio_slug, 'color_del_mapa'] = PALETTE[0]
     
-    if gdf_barrio.empty:
-        # Intentar con una búsqueda menos estricta
-        gdf_barrio = geojson_gdf[geojson_gdf['nombre'].str.contains(barrio_nombre, case=False, na=False)]
-    
-    if gdf_barrio.empty:
-        return "" # No se encontró el barrio
+    if df_mapa[df_mapa['slug'] == barrio_slug].empty:
+        pass
 
-    # Crear el mapa de base
     fig = px.choropleth_map(
-        geojson_gdf,
-        geojson=geojson_gdf.__geo_interface__,
-        locations=geojson_gdf['slug'],
-        color_discrete_sequence=['#404040'], # Color base gris
-        center={"lat": 40.4168, "lon": -3.7038}, # Centro de Madrid
-        opacity=0.3,
-        zoom=10
+        df_mapa,
+        geojson=df_mapa.__geo_interface__,
+        locations=df_mapa['slug'],
+        color='color_del_mapa',
+        featureidkey='properties.slug',
+        center={"lat": 40.4168, "lon": -3.7038},
+        zoom=10,
+        opacity=0.7,
+        projection="mercator"
     )
-
-    # Resaltar el barrio seleccionado
-    fig.add_trace(go.Choroplethmap(
-        geojson=gdf_barrio.__geo_interface__,
-        locations=[barrio_slug],
-        z=[1], # valor para el color
-        marker_opacity=1,
-        marker_line_width=2,
-        marker_line_color=PALETTE[0],
-        showscale=False,
-        name=barrio_nombre,
-        colorscale=[[0, PALETTE[0]], [1, PALETTE[0]]],
-        customdata=[barrio_nombre],
-        hovertemplate="<b>%{customdata[0]}</b><extra></extra>"
-    ))
+    
+    fig.update_traces(marker_line_width=1, marker_line_color='rgba(255,255,255,0.2)')
     
     fig.update_layout(
         title="",
-        margin={"r":0,"t":0,"l":0,"b":0}
-    )
-    
-    # Remover elementos innecesarios
-    fig.update_layout(
+        margin={"r":0,"t":0,"l":0,"b":0},
+        mapbox_style="carto-positron",
         showlegend=False
     )
+
+    hovertemplate = '<b>%{properties.nombre}</b><extra></extra>'
+    fig.update_traces(hovertemplate=hovertemplate)
 
     return fig_html(fig)
 # =========================================================
