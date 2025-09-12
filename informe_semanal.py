@@ -86,21 +86,24 @@ def generar_mapa_barrio(barrio_nombre, geojson_gdf):
     df_mapa.loc[df_mapa['slug'] == barrio_slug, 'color_del_mapa'] = PALETTE[0]
     
     barrio_seleccionado = df_mapa[df_mapa['slug'] == barrio_slug]
+    
     if barrio_seleccionado.empty:
         # Centro de Madrid por defecto si el barrio no se encuentra
         center = {"lat": 40.4168, "lon": -3.7038}
+        zoom_level = 10
     else:
         # Calcular el centro (centroide) del barrio seleccionado para centrar el mapa
         centroid = barrio_seleccionado.geometry.iloc[0].centroid
         center = {"lat": centroid.y, "lon": centroid.x}
+        zoom_level = 13 # Aumento del zoom para que se vea más cerca
 
     fig = px.choropleth_mapbox(
         df_mapa,
         geojson=df_mapa.geometry,
         locations=df_mapa.index,
         color='color_del_mapa',
-        center=center,  # Usa el centro dinámico del barrio
-        zoom=13,        # Aumento del zoom para que se vea más cerca
+        center=center,
+        zoom=zoom_level,
         opacity=0.7,
     )
     
@@ -352,6 +355,7 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
 # ==============================
 def main():
     try:
+        # Renombra la columna 'NOMBRE' a 'nombre' para que la lógica de slugify funcione
         geojson_gdf = gpd.read_file("BARRIOS.shp")
         geojson_gdf.rename(columns={'NOMBRE': 'nombre'}, inplace=True)
         geojson_gdf['slug'] = geojson_gdf['nombre'].apply(slugify)
