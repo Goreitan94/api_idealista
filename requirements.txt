@@ -7,4 +7,4 @@ geopandas
 requests
 openpyxl
 reportlab
-
+geopandas
