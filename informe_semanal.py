@@ -7,7 +7,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 from io import BytesIO
-import geopandas as gpd # <-- NUEVA DEPENDENCIA
+import geopandas as gpd
 
 # ==============================
 # Config
@@ -73,15 +73,13 @@ def fig_html(fig) -> str:
     return fig.to_html(full_html=False, include_plotlyjs=False, config={"displaylogo": False, "modeBarButtonsToRemove": ["select", "lasso2d"]})
 
 # ==============================
-# NUEVA FUNCION: Generar mapa del barrio
+# Generar mapa del barrio
 # ==============================
 def generar_mapa_barrio(barrio_nombre, geojson_gdf):
     df_mapa = geojson_gdf.copy()
     
-    # Añadimos una columna para el color de los polígonos
-    df_mapa['color_del_mapa'] = '#404040' # Color por defecto para todos
+    df_mapa['color_del_mapa'] = '#404040'
     
-    # Asignamos el color de acento al barrio seleccionado
     barrio_slug = slugify(barrio_nombre)
     df_mapa.loc[df_mapa['slug'] == barrio_slug, 'color_del_mapa'] = PALETTE[0]
     
@@ -97,7 +95,6 @@ def generar_mapa_barrio(barrio_nombre, geojson_gdf):
         center={"lat": 40.4168, "lon": -3.7038},
         zoom=10,
         opacity=0.7,
-        projection="mercator"
     )
     
     fig.update_traces(marker_line_width=1, marker_line_color='rgba(255,255,255,0.2)')
@@ -351,10 +348,7 @@ def main():
     # Asegúrate de que este archivo está en la misma carpeta que el script.
     # Puedes encontrarlo en portales de datos abiertos de Madrid.
     try:
-        # Aquí se ha cambiado a .shp para que lea el archivo que tienes
         geojson_gdf = gpd.read_file("BARRIOS.shp")
-        # Preparamos el GeoDataFrame para la búsqueda (nombre y slug)
-        # Asegúrate de que tu Shapefile tiene una columna 'nombre' o 'NAME' con el nombre de los barrios
         geojson_gdf.rename(columns={'NOMBRE': 'nombre'}, inplace=True)
         geojson_gdf['slug'] = geojson_gdf['nombre'].apply(slugify)
         print("✅ Archivo GeoJSON de barrios de Madrid cargado.")
@@ -405,7 +399,7 @@ def main():
             print(f"⚠️ Error procesando {a['name']}: {e}")
 
     print("📊 Generando informe HTML completo...")
-    full_html = generar_informe_global(dfs, barrios, fecha, geojson_gdf) # <-- PASAMOS EL GEOJSON
+    full_html = generar_informe_global(dfs, barrios, fecha, geojson_gdf)
 
     out_folder_pages = os.environ.get("OUTPUT_FOLDER", "output_html")
     os.makedirs(out_folder_pages, exist_ok=True)
