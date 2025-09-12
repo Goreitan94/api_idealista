@@ -370,14 +370,16 @@ def main():
     # Asegúrate de que este archivo está en la misma carpeta que el script.
     # Puedes encontrarlo en portales de datos abiertos de Madrid.
     try:
-        geojson_gdf = gpd.read_file("madrid_barrios.geojson")
+        # Aquí se ha cambiado a .shp para que lea el archivo que tienes
+        geojson_gdf = gpd.read_file("BARRIOS.shp")
         # Preparamos el GeoDataFrame para la búsqueda (nombre y slug)
-        geojson_gdf['nombre'] = geojson_gdf['name'].str.title()
+        # Asegúrate de que tu Shapefile tiene una columna 'nombre' o 'NAME' con el nombre de los barrios
+        geojson_gdf.rename(columns={'NOMBRE': 'nombre'}, inplace=True)
         geojson_gdf['slug'] = geojson_gdf['nombre'].apply(slugify)
         print("✅ Archivo GeoJSON de barrios de Madrid cargado.")
     except Exception as e:
         print(f"❌ Error al cargar el archivo GeoJSON: {e}")
-        print("❌ Asegúrate de tener 'madrid_barrios.geojson' en la misma carpeta y de haber instalado 'geopandas'.")
+        print("❌ Asegúrate de tener 'BARRIOS.shp' en la misma carpeta y de haber instalado 'geopandas'.")
         geojson_gdf = None
         return
 
