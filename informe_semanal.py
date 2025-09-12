@@ -7,6 +7,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 from io import BytesIO
+import geopandas as gpd # <-- NUEVA DEPENDENCIA
 
 # ==============================
 # Config
@@ -70,6 +71,69 @@ def fmt_eur(x):
 
 def fig_html(fig) -> str:
     return fig.to_html(full_html=False, include_plotlyjs=False, config={"displaylogo": False, "modeBarButtonsToRemove": ["select", "lasso2d"]})
+
+# ==============================
+# NUEVA FUNCION: Generar mapa del barrio
+# ==============================
+def generar_mapa_barrio(barrio_nombre, geojson_gdf):
+    # Intentar encontrar el barrio en el GeoDataFrame
+    barrio_slug = slugify(barrio_nombre)
+    gdf_barrio = geojson_gdf[geojson_gdf['slug'] == barrio_slug]
+    
+    if gdf_barrio.empty:
+        # Intentar con una búsqueda menos estricta
+        gdf_barrio = geojson_gdf[geojson_gdf['nombre'].str.contains(barrio_nombre, case=False, na=False)]
+    
+    if gdf_barrio.empty:
+        return "" # No se encontró el barrio
+
+    # Crear el mapa de base
+    fig = px.choropleth_mapbox(
+        geojson_gdf,
+        geojson=geojson_gdf.geometry,
+        locations=geojson_gdf.index,
+        color_discrete_sequence=['#404040'], # Color base gris
+        mapbox_style="carto-darkmatter",
+        zoom=10,
+        center={"lat": 40.4168, "lon": -3.7038}, # Centro de Madrid
+        opacity=0.3
+    )
+
+    # Resaltar el barrio seleccionado
+    fig.add_trace(go.Choroplethmapbox(
+        geojson=gdf_barrio.geometry,
+        locations=gdf_barrio.index,
+        marker_opacity=1,
+        marker_line_width=2,
+        marker_line_color=PALETTE[0],
+        showscale=False,
+        name=barrio_nombre,
+        colorscale=[[0, PALETTE[0]], [1, PALETTE[0]]],
+        customdata=[barrio_nombre],
+        hovertemplate="<b>%{customdata[0]}</b><extra></extra>"
+    ))
+    
+    fig.update_layout(
+        title="",
+        mapbox_layers=[{
+            "below": 'carto-darkmatter',
+            "source": gdf_barrio.geometry.__geo_interface__,
+            "type": "fill",
+            "color": PALETTE[0],
+            "opacity": 0.5
+        }],
+        margin={"r":0,"t":0,"l":0,"b":0}
+    )
+    
+    # Remover elementos innecesarios
+    fig.update_layout(
+        showlegend=False,
+        mapbox_bounds={"west": -3.85, "east": -3.5, "south": 40.3, "north": 40.55}
+    )
+
+    return fig_html(fig)
+# =========================================================
+
 
 # ==============================
 # Gráficos y Tablas Helpers
@@ -164,15 +228,10 @@ def bar_chart_lift_impact(df, title, color_lift_true='#6c9ef8', color_lift_false
     fig.update_yaxes(range=[0, df_grouped["price_per_m2"].max() * 1.2])
     return fig_html(fig)
 
-# ----- NUEVA FUNCIÓN: precio medio €/m² Exterior vs Interior -----
 def bar_price_exterior(df, title, color_exterior='#6c9ef8', color_interior='rgba(255,255,255,0.4)'):
-    """
-    Gráfico sencillo que muestra el €/m² medio para Exterior vs Interior.
-    """
     if "exterior_label" not in df.columns or df["price_per_m2"].dropna().empty:
         return ""
     df_grouped = df.groupby("exterior_label")["price_per_m2"].mean().reset_index()
-    # asegurar orden consistente
     order = ['Exterior', 'Interior']
     df_grouped['exterior_label'] = pd.Categorical(df_grouped['exterior_label'], categories=order, ordered=True)
     df_grouped = df_grouped.sort_values('exterior_label')
@@ -189,7 +248,6 @@ def bar_price_exterior(df, title, color_exterior='#6c9ef8', color_interior='rgba
     fig.update_traces(texttemplate='%{text:,.0f}€/m²', textposition='outside')
     fig.update_layout(yaxis_title="€/m² Medio", showlegend=False)
     return fig_html(fig)
-# ---------------------------------------------------------------
 
 def tabla_html(df, title, sort_col, ascending, cols_order):
     usable = df.copy().sort_values(sort_col, ascending=ascending).head(10)
@@ -240,7 +298,7 @@ def tabla_html(df, title, sort_col, ascending, cols_order):
 # ==============================
 # Generador de Informe
 # ==============================
-def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fecha: str):
+def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fecha: str, geojson_gdf):
     parts = [f"""
 <!doctype html><html lang="es"><head><meta charset="utf-8" /><title>UrbenEye — Informe Interactivo — {fecha}</title><meta name="viewport" content="width=device-width, initial-scale=1" /><script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script><style>:root{{--bg:#0b1020;--card:#121a33;--ink:#e6ecff;--muted:#a8b2d1;--accent:#6c9ef8;}}html,body{{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}} .wrap{{max-width:1200px;margin:40px auto;padding:0 16px;}} .hero{{background:radial-gradient(1200px 400px at 20% -20%,rgba(108,158,248,0.25),transparent),radial-gradient(1000px 500px at 120% 20%,rgba(255,122,89,0.20),transparent);border:1px solid rgba(255,255,255,0.06);border-radius:24px;padding:28px 28px 18px;margin-bottom:24px;box-shadow:0 20px 60px rgba(0,0,0,0.35),inset 0 1px 0 rgba(255,255,255,0.03);}} h1{{font-size:32px;margin:0 0 6px;}} .sub{{color:var(--muted);font-size:14px;}} .toc{{background:#0f1630;border:1px solid rgba(255,255,255,0.06);border-radius:14px;padding:14px 16px;margin:18px 0 28px;}} .toc h3{{margin:0 0 8px;font-size:15px;color:var(--muted);}}
     /* --- ADAPTACIÓN: evitar que .toc a (links normales) sobrescriban el color de las .pill --- */
@@ -279,17 +337,21 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
         bid = slugify(barrio_nombre)
         color = PALETTE[i % len(PALETTE)]
         parts.append(f'<div id="{bid}" class="section anchor"><h2>🏘️ {barrio_nombre}</h2><div class="grid grid-3">')
+        
+        # --- NUEVO: Mapa del barrio ---
+        mapa_html = generar_mapa_barrio(barrio_nombre, geojson_gdf)
+        if mapa_html:
+            parts.append(f'<div style="grid-column: span 3; border-radius:10px; overflow:hidden;">{mapa_html}</div>')
+        # ---------------------------
+
         parts.append(histograma(df, "price", "Distribución de Precio (€)", color))
         parts.append(histograma(df, "price_per_m2", "Distribución de €/m²", color))
         parts.append(histograma(df, "size", "Distribución de Tamaño (m²)", color))
         parts.append('</div><div class="grid grid-2">')
         parts.append(scatter_precio_size(df, color))
         parts.append(scatter_price_size_trend(df, "€/m² vs Tamaño: Tendencia no lineal", color))
-        # gráfico existente por combinaciones (exterior + ascensor)
         parts.append(bar_chart_features(df, "€/m² Medio: Exterior vs Interior / Con vs Sin Ascensor", color))
-        # ----- AÑADIDO: gráfico explícito Exterior vs Interior -----
         parts.append(bar_price_exterior(df, "€/m² Medio: Exterior vs Interior"))
-        # --------------------------------------------------------
         parts.append(bar_chart_lift_impact(df, "€/m² Medio: Con vs Sin Ascensor", color))
         parts.append('</div><div class="grid grid-2">')
         cols_order = ['price', 'size', 'price_per_m2', 'rooms', 'exterior_label', 'lift_label', 'url']
@@ -304,6 +366,22 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
 # Main
 # ==============================
 def main():
+    # --- PASO 1: Cargar el archivo GeoJSON ---
+    # Asegúrate de que este archivo está en la misma carpeta que el script.
+    # Puedes encontrarlo en portales de datos abiertos de Madrid.
+    try:
+        geojson_gdf = gpd.read_file("madrid_barrios.geojson")
+        # Preparamos el GeoDataFrame para la búsqueda (nombre y slug)
+        geojson_gdf['nombre'] = geojson_gdf['name'].str.title()
+        geojson_gdf['slug'] = geojson_gdf['nombre'].apply(slugify)
+        print("✅ Archivo GeoJSON de barrios de Madrid cargado.")
+    except Exception as e:
+        print(f"❌ Error al cargar el archivo GeoJSON: {e}")
+        print("❌ Asegúrate de tener 'madrid_barrios.geojson' en la misma carpeta y de haber instalado 'geopandas'.")
+        geojson_gdf = None
+        return
+
+    # --- RESTO DEL SCRIPT ORIGINAL ---
     token = get_onedrive_token()
     print("✅ Token de OneDrive obtenido.")
 
@@ -344,7 +422,7 @@ def main():
             print(f"⚠️ Error procesando {a['name']}: {e}")
 
     print("📊 Generando informe HTML completo...")
-    full_html = generar_informe_global(dfs, barrios, fecha)
+    full_html = generar_informe_global(dfs, barrios, fecha, geojson_gdf) # <-- PASAMOS EL GEOJSON
 
     out_folder_pages = os.environ.get("OUTPUT_FOLDER", "output_html")
     os.makedirs(out_folder_pages, exist_ok=True)
