@@ -88,21 +88,21 @@ def generar_mapa_barrio(barrio_nombre, geojson_gdf):
         return "" # No se encontró el barrio
 
     # Crear el mapa de base
-    fig = px.choropleth_mapbox(
+    fig = px.choropleth_map(
         geojson_gdf,
-        geojson=geojson_gdf.geometry,
-        locations=geojson_gdf.index,
+        geojson=geojson_gdf.__geo_interface__,
+        locations=geojson_gdf['slug'],
         color_discrete_sequence=['#404040'], # Color base gris
-        mapbox_style="carto-darkmatter",
-        zoom=10,
         center={"lat": 40.4168, "lon": -3.7038}, # Centro de Madrid
-        opacity=0.3
+        opacity=0.3,
+        zoom=10
     )
 
     # Resaltar el barrio seleccionado
-    fig.add_trace(go.Choroplethmapbox(
-        geojson=gdf_barrio.geometry,
-        locations=gdf_barrio.index,
+    fig.add_trace(go.Choroplethmap(
+        geojson=gdf_barrio.__geo_interface__,
+        locations=[barrio_slug],
+        z=[1], # valor para el color
         marker_opacity=1,
         marker_line_width=2,
         marker_line_color=PALETTE[0],
@@ -115,20 +115,12 @@ def generar_mapa_barrio(barrio_nombre, geojson_gdf):
     
     fig.update_layout(
         title="",
-        mapbox_layers=[{
-            "below": 'carto-darkmatter',
-            "source": gdf_barrio.geometry.__geo_interface__,
-            "type": "fill",
-            "color": PALETTE[0],
-            "opacity": 0.5
-        }],
         margin={"r":0,"t":0,"l":0,"b":0}
     )
     
     # Remover elementos innecesarios
     fig.update_layout(
-        showlegend=False,
-        mapbox_bounds={"west": -3.85, "east": -3.5, "south": 40.3, "north": 40.55}
+        showlegend=False
     )
 
     return fig_html(fig)
