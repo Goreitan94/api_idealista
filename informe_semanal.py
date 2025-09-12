@@ -25,7 +25,12 @@ PALETTE = px.colors.qualitative.Plotly
 # ==============================
 def get_onedrive_token():
     token_url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
-    data = {"grant_type": "client_credentials", "client_id": CLIENT_ID, "client_secret": CLIENT_SECRET, "scope": "https://graph.microsoft.com/.default"}
+    data = {
+        "grant_type": "client_credentials",
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET,
+        "scope": "https://graph.microsoft.com/.default"
+    }
     response = requests.post(token_url, data=data)
     token_data = response.json()
     if "access_token" in token_data:
@@ -70,48 +75,42 @@ def fmt_eur(x):
         return ""
 
 def fig_html(fig) -> str:
-    return fig.to_html(full_html=False, include_plotlyjs=False, config={"displaylogo": False, "modeBarButtonsToRemove": ["select", "lasso2d"]})
+    return fig.to_html(
+        full_html=False,
+        include_plotlyjs=False,
+        config={"displaylogo": False, "modeBarButtonsToRemove": ["select", "lasso2d"]}
+    )
 
 # ==============================
 # Generar mapa del barrio
 # ==============================
 def generar_mapa_barrio(barrio_nombre, geojson_gdf):
     df_mapa = geojson_gdf.copy()
-    
     df_mapa['color_del_mapa'] = '#404040'
-    
+
     barrio_slug = slugify(barrio_nombre)
     df_mapa.loc[df_mapa['slug'] == barrio_slug, 'color_del_mapa'] = PALETTE[0]
-    
-    if df_mapa[df_mapa['slug'] == barrio_slug].empty:
-        pass
 
-    fig = px.choropleth_map(
+    fig = px.choropleth_mapbox(
         df_mapa,
         geojson=df_mapa.__geo_interface__,
-        locations=df_mapa['slug'],
+        locations='slug',
         color='color_del_mapa',
         featureidkey='properties.slug',
         center={"lat": 40.4168, "lon": -3.7038},
         zoom=10,
-        opacity=0.7,
+        opacity=0.7
     )
-    
+
     fig.update_traces(marker_line_width=1, marker_line_color='rgba(255,255,255,0.2)')
-    
     fig.update_layout(
-        title="",
+        mapbox_style="carto-positron",  # O "open-street-map" si no tienes token de Mapbox
         margin={"r":0,"t":0,"l":0,"b":0},
-        mapbox_style="carto-positron",
         showlegend=False
     )
-
-    hovertemplate = '<b>%{properties.nombre}</b><extra></extra>'
-    fig.update_traces(hovertemplate=hovertemplate)
+    fig.update_traces(hovertemplate='<b>%{properties.nombre}</b><extra></extra>')
 
     return fig_html(fig)
-# =========================================================
-
 
 # ==============================
 # Gráficos y Tablas Helpers
@@ -237,9 +236,8 @@ def tabla_html(df, title, sort_col, ascending, cols_order):
         return ""
 
     header_html = "".join([f"<th>{c.replace('_', ' ').title().replace('Url', 'Anuncio')}</th>" for c in usable.columns])
-    
     rows_html = ""
-    for index, row in usable.iterrows():
+    for _, row in usable.iterrows():
         cells_html = ""
         for c in usable.columns:
             val = row[c]
@@ -278,65 +276,35 @@ def tabla_html(df, title, sort_col, ascending, cols_order):
 # ==============================
 def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fecha: str, geojson_gdf):
     parts = [f"""
-<!doctype html><html lang="es"><head><meta charset="utf-8" /><title>UrbenEye — Informe Interactivo — {fecha}</title><meta name="viewport" content="width=device-width, initial-scale=1" /><script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script><style>:root{{--bg:#0b1020;--card:#121a33;--ink:#e6ecff;--muted:#a8b2d1;--accent:#6c9ef8;}}html,body{{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}} .wrap{{max-width:1200px;margin:40px auto;padding:0 16px;}} .hero{{background:radial-gradient(1200px 400px at 20% -20%,rgba(108,158,248,0.25),transparent),radial-gradient(1000px 500px at 120% 20%,rgba(255,122,89,0.20),transparent);border:1px solid rgba(255,255,255,0.06);border-radius:24px;padding:28px 28px 18px;margin-bottom:24px;box-shadow:0 20px 60px rgba(0,0,0,0.35),inset 0 1px 0 rgba(255,255,255,0.03);}} h1{{font-size:32px;margin:0 0 6px;}} .sub{{color:var(--muted);font-size:14px;}} .toc{{background:#0f1630;border:1px solid rgba(255,255,255,0.06);border-radius:14px;padding:14px 16px;margin:18px 0 28px;}} .toc h3{{margin:0 0 8px;font-size:15px;color:var(--muted);}}
-    /* --- ADAPTACIÓN: evitar que .toc a (links normales) sobrescriban el color de las .pill --- */
-    .toc a:not(.pill){{color:var(--ink);text-decoration:none;}} 
-    .toc a.notpill_hover:hover{{color:var(--accent);}} 
-    /* estilo de las píldoras (pills): texto oscuro sobre fondo claro para buen contraste */
-    .toc a.pill{{color:#081229;background:#cfe1ff;border-radius:999px;padding:6px 12px;font-size:13px;text-decoration:none;display:inline-block;}} 
-    .toc a.pill:hover{{background:#9fc9ff;color:#03112a;text-decoration:none;}}
-    .section{{background:var(--card);border:1px solid rgba(255,255,255,0.06);border-radius:18px;padding:14px;margin:14px 0 22px;}} .section > h2{{font-size:20px;margin:8px 6px 10px;}} .pill{{display:inline-block;font-size:12px;color:#081229;background:#cfe1ff;border-radius:999px;padding:2px 10px;margin-left:8px;}} .pill a{{color:#081229;text-decoration:none;}} .pill a:hover{{color:#004488;}} .grid{{display:grid;grid-template-columns:1fr;gap:14px;}} @media(min-width:900px){{.grid-2{{grid-template-columns:1fr 1fr;}} .grid-3{{grid-template-columns:1fr 1fr 1fr;}}}} .anchor{{scroll-margin-top:20px;}}</style></head><body><div class="wrap"><div class="hero"><h1>📊 UrbenEye — Informe Interactivo — {fecha}</h1><div class="sub">Fuente: Idealista API | Generado Automáticamente</div></div>
-""" ]
+<!doctype html><html lang="es"><head><meta charset="utf-8" /><title>UrbenEye — Informe Interactivo — {fecha}</title>
+<script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script></head><body><div class="wrap">
+<h1>📊 UrbenEye — Informe Interactivo — {fecha}</h1>"""]
+
     df_all = []
     for barrio, df in zip(barrios, all_dfs):
-        if df is None or df.empty: continue
+        if df is None or df.empty:
+            continue
         tmp = df.copy()
         tmp["barrio"] = re.sub(r'_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$', '', barrio)
         df_all.append(tmp)
+
     if not df_all:
         parts.append("<p>No hay datos.</p></div></body></html>")
         return "".join(parts)
+
     df_all = pd.concat(df_all, ignore_index=True)
     barrios_unicos = df_all["barrio"].unique().tolist()
-    
-    parts.append('<div class="toc"><h3>Navegación</h3><div style="display:flex;flex-wrap:wrap;gap:10px;"><a href="#resumen" class="pill">Resumen general</a>')
-    for b in barrios_unicos: parts.append(f'<a href="#{slugify(b)}" class="pill">{b}</a>')
-    parts.append('</div></div>')
-    
-    parts.append('<div id="resumen" class="section anchor"><h2>📌 Resumen general</h2>')
-    m_ppm2 = df_all.groupby("barrio")["price_per_m2"].mean().sort_values(ascending=False).reset_index()
-    fig_resumen1 = px.bar(m_ppm2, x="barrio", y="price_per_m2", template=TEMPLATE, title="€/m² medio por barrio", color="barrio")
-    parts.append(fig_html(fig_resumen1))
-    parts.append('</div>')
 
     for i, barrio_nombre in enumerate(barrios_unicos):
         df = df_all[df_all["barrio"] == barrio_nombre]
         if df.empty: continue
-        bid = slugify(barrio_nombre)
         color = PALETTE[i % len(PALETTE)]
-        parts.append(f'<div id="{bid}" class="section anchor"><h2>🏘️ {barrio_nombre}</h2><div class="grid grid-3">')
-        
-        # --- NUEVO: Mapa del barrio ---
+        parts.append(f"<h2>{barrio_nombre}</h2>")
         mapa_html = generar_mapa_barrio(barrio_nombre, geojson_gdf)
         if mapa_html:
-            parts.append(f'<div style="grid-column: span 3; border-radius:10px; overflow:hidden;">{mapa_html}</div>')
-        # ---------------------------
-
+            parts.append(mapa_html)
         parts.append(histograma(df, "price", "Distribución de Precio (€)", color))
-        parts.append(histograma(df, "price_per_m2", "Distribución de €/m²", color))
-        parts.append(histograma(df, "size", "Distribución de Tamaño (m²)", color))
-        parts.append('</div><div class="grid grid-2">')
-        parts.append(scatter_precio_size(df, color))
-        parts.append(scatter_price_size_trend(df, "€/m² vs Tamaño: Tendencia no lineal", color))
-        parts.append(bar_chart_features(df, "€/m² Medio: Exterior vs Interior / Con vs Sin Ascensor", color))
-        parts.append(bar_price_exterior(df, "€/m² Medio: Exterior vs Interior"))
-        parts.append(bar_chart_lift_impact(df, "€/m² Medio: Con vs Sin Ascensor", color))
-        parts.append('</div><div class="grid grid-2">')
-        cols_order = ['price', 'size', 'price_per_m2', 'rooms', 'exterior_label', 'lift_label', 'url']
-        parts.append(tabla_html(df, "Top 10 — Más baratas (por €/m²)", "price_per_m2", True, cols_order))
-        parts.append(tabla_html(df, "Top 10 — Más caras (por €/m²)", "price_per_m2", False, cols_order))
-        parts.append('</div></div>')
-        
+
     parts.append("</div></body></html>")
     return "".join(parts)
 
@@ -344,9 +312,6 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
 # Main
 # ==============================
 def main():
-    # --- PASO 1: Cargar el archivo GeoJSON ---
-    # Asegúrate de que este archivo está en la misma carpeta que el script.
-    # Puedes encontrarlo en portales de datos abiertos de Madrid.
     try:
         geojson_gdf = gpd.read_file("BARRIOS.shp")
         geojson_gdf.rename(columns={'NOMBRE': 'nombre'}, inplace=True)
@@ -354,11 +319,8 @@ def main():
         print("✅ Archivo GeoJSON de barrios de Madrid cargado.")
     except Exception as e:
         print(f"❌ Error al cargar el archivo GeoJSON: {e}")
-        print("❌ Asegúrate de tener 'BARRIOS.shp' en la misma carpeta y de haber instalado 'geopandas'.")
-        geojson_gdf = None
         return
 
-    # --- RESTO DEL SCRIPT ORIGINAL ---
     token = get_onedrive_token()
     print("✅ Token de OneDrive obtenido.")
 
@@ -368,21 +330,15 @@ def main():
         print("❌ No hay carpetas con formato fecha.")
         return
     fecha = sorted(fechas, reverse=True)[0]
-    print(f"📁 Usando datos de la carpeta: {fecha}")
-
     carpeta_path = f"{BASE_FOLDER}/{fecha}"
     archivos = list_folders(carpeta_path, token)
     archivos_xlsx = [a for a in archivos if a["name"].lower().endswith(".xlsx")]
-    if not archivos_xlsx:
-        print(f"❌ No se encontraron archivos Excel en la carpeta {fecha}.")
-        return
 
     barrios, dfs = [], []
     for a in sorted(archivos_xlsx, key=lambda x: x['name']):
         barrio_nombre = os.path.splitext(a["name"])[0]
         file_path = f"{carpeta_path}/{a['name']}"
         try:
-            print(f"📥 Descargando y procesando: {a['name']}")
             df = download_excel(file_path, token)
             if 'size' in df.columns: df = df[df['size'] > 0].copy()
             if 'price' in df.columns: df = df[df['price'] > 0].copy()
@@ -392,7 +348,6 @@ def main():
                 df['exterior_label'] = df['exterior'].apply(lambda x: 'Exterior' if x else 'Interior')
             if 'hasLift' in df.columns:
                 df['lift_label'] = df['hasLift'].apply(lambda x: 'Con Ascensor' if x else 'Sin Ascensor')
-            
             barrios.append(barrio_nombre)
             dfs.append(df)
         except Exception as e:
@@ -400,13 +355,11 @@ def main():
 
     print("📊 Generando informe HTML completo...")
     full_html = generar_informe_global(dfs, barrios, fecha, geojson_gdf)
-
-    out_folder_pages = os.environ.get("OUTPUT_FOLDER", "output_html")
-    os.makedirs(out_folder_pages, exist_ok=True)
-    out_path_pages = os.path.join(out_folder_pages, "index.html")
-    with open(out_path_pages, "w", encoding="utf-8") as f:
+    os.makedirs("output_html", exist_ok=True)
+    out_path = os.path.join("output_html", "index.html")
+    with open(out_path, "w", encoding="utf-8") as f:
         f.write(full_html)
-    print(f"✅ Informe final guardado en '{out_path_pages}' para su despliegue.")
+    print(f"✅ Informe final guardado en '{out_path}'.")
 
 if __name__ == "__main__":
     main()
