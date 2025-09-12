@@ -87,18 +87,18 @@ def generar_mapa_barrio(barrio_nombre, geojson_gdf):
     
     barrio_seleccionado = df_mapa[df_mapa['slug'] == barrio_slug]
     if barrio_seleccionado.empty:
+        # Centro de Madrid por defecto si el barrio no se encuentra
         center = {"lat": 40.4168, "lon": -3.7038}
     else:
         # Calcular el centro (centroide) del barrio seleccionado para centrar el mapa
         centroid = barrio_seleccionado.geometry.iloc[0].centroid
         center = {"lat": centroid.y, "lon": centroid.x}
 
-    fig = px.choropleth_map(
+    fig = px.choropleth_mapbox(
         df_mapa,
-        geojson=df_mapa.__geo_interface__,
-        locations=df_mapa['slug'],
+        geojson=df_mapa.geometry,
+        locations=df_mapa.index,
         color='color_del_mapa',
-        featureidkey='properties.slug',
         center=center,  # Usa el centro dinámico del barrio
         zoom=13,        # Aumento del zoom para que se vea más cerca
         opacity=0.7,
