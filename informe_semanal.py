@@ -76,26 +76,26 @@ def fig_html(fig) -> str:
 # Generar mapa del barrio
 # ==============================
 def generar_mapa_barrio(barrio_nombre, geojson_gdf):
-    df_mapa = geojson_gdf.copy()
-    
-    # Añadimos una columna para el color de los polígonos
-    df_mapa['color_del_mapa'] = '#404040' # Color por defecto para todos
-    
-    # Asignamos el color de acento al barrio seleccionado
+    # Buscar el polígono del barrio específico
     barrio_slug = slugify(barrio_nombre)
-    df_mapa.loc[df_mapa['slug'] == barrio_slug, 'color_del_mapa'] = PALETTE[0]
-    
-    barrio_seleccionado = df_mapa[df_mapa['slug'] == barrio_slug]
-    
+    barrio_seleccionado = geojson_gdf[geojson_gdf['slug'] == barrio_slug].copy()
+
     if barrio_seleccionado.empty:
-        # Centro de Madrid por defecto si el barrio no se encuentra
+        # Fallback si el barrio no se encuentra, usamos el centro de Madrid
+        print(f"⚠️ Barrio '{barrio_nombre}' no encontrado en el GeoJSON.")
         center = {"lat": 40.4168, "lon": -3.7038}
         zoom_level = 10
+        df_mapa = geojson_gdf.copy()
+        df_mapa['color_del_mapa'] = '#404040'
     else:
-        # Calcular el centro (centroide) del barrio seleccionado para centrar el mapa
+        # Si se encuentra, calculamos el centro y ajustamos el zoom
         centroid = barrio_seleccionado.geometry.iloc[0].centroid
         center = {"lat": centroid.y, "lon": centroid.x}
         zoom_level = 13 # Aumento del zoom para que se vea más cerca
+        
+        # Preparamos el DataFrame para la visualización del barrio individual
+        df_mapa = barrio_seleccionado
+        df_mapa['color_del_mapa'] = PALETTE[0]
 
     fig = px.choropleth_mapbox(
         df_mapa,
