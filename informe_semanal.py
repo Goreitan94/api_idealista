@@ -8,6 +8,7 @@ import plotly.graph_objects as go
 from datetime import datetime
 from io import BytesIO
 import geopandas as gpd
+import unicodedata
 
 # ==============================
 # Config
@@ -58,9 +59,11 @@ def es_fecha(nombre: str) -> bool:
         return False
 
 def slugify(text: str) -> str:
-    text = text.lower().strip()
-    text = re.sub(r"\s+", "-", text)
-    text = re.sub(r"[^a-z0-9\-]", "", text)
+    # Función de slugify mejorada para manejar tildes y ñ
+    text = text.lower()
+    text = unicodedata.normalize('NFKD', text).encode('ascii', 'ignore').decode('utf-8')
+    text = re.sub(r'ñ', 'n', text)
+    text = re.sub(r'[\s\W]+', '-', text).strip('-')
     return text
 
 def fmt_eur(x):
@@ -76,27 +79,30 @@ def fig_html(fig) -> str:
 # Generar mapa del barrio
 # ==============================
 def generar_mapa_barrio(barrio_nombre, geojson_gdf):
-    # Buscar el polígono del barrio específico
     barrio_slug = slugify(barrio_nombre)
     barrio_seleccionado = geojson_gdf[geojson_gdf['slug'] == barrio_slug].copy()
 
+    # Creando una copia del GeoDataFrame completo para la visualización
+    df_mapa = geojson_gdf.copy()
+    
+    # Asignamos un color base para todos los barrios (por ejemplo, un gris)
+    df_mapa['color_del_mapa'] = '#404040' 
+    df_mapa['nombre_para_hover'] = df_mapa['nombre']
+    
     if barrio_seleccionado.empty:
-        # Fallback si el barrio no se encuentra, usamos el centro de Madrid
-        print(f"⚠️ Barrio '{barrio_nombre}' no encontrado en el GeoJSON.")
+        print(f"⚠️ Barrio '{barrio_nombre}' (slug: '{barrio_slug}') no encontrado en el GeoJSON.")
+        # Usamos el centro y zoom por defecto si no se encuentra el barrio
         center = {"lat": 40.4168, "lon": -3.7038}
-        zoom_level = 10
-        df_mapa = geojson_gdf.copy()
-        df_mapa['color_del_mapa'] = '#404040'
+        zoom_level = 9.5
     else:
-        # Si se encuentra, calculamos el centro y ajustamos el zoom
+        # Resaltamos el barrio seleccionado con un color de la paleta
+        df_mapa.loc[df_mapa['slug'] == barrio_slug, 'color_del_mapa'] = PALETTE[0]
+        
+        # Ajustamos el mapa para que se centre en el barrio
         centroid = barrio_seleccionado.geometry.iloc[0].centroid
         center = {"lat": centroid.y, "lon": centroid.x}
-        zoom_level = 13 # Aumento del zoom para que se vea más cerca
+        zoom_level = 12.5 # Ajustado para un mejor enfoque
         
-        # Preparamos el DataFrame para la visualización del barrio individual
-        df_mapa = barrio_seleccionado
-        df_mapa['color_del_mapa'] = PALETTE[0]
-
     fig = px.choropleth_mapbox(
         df_mapa,
         geojson=df_mapa.geometry,
@@ -105,6 +111,7 @@ def generar_mapa_barrio(barrio_nombre, geojson_gdf):
         center=center,
         zoom=zoom_level,
         opacity=0.7,
+        custom_data=['nombre_para_hover']
     )
     
     fig.update_traces(marker_line_width=1, marker_line_color='rgba(255,255,255,0.2)')
@@ -116,7 +123,7 @@ def generar_mapa_barrio(barrio_nombre, geojson_gdf):
         showlegend=False
     )
 
-    hovertemplate = '<b>%{properties.nombre}</b><extra></extra>'
+    hovertemplate = '<b>%{customdata[0]}</b><extra></extra>'
     fig.update_traces(hovertemplate=hovertemplate)
 
     return fig_html(fig)
@@ -301,16 +308,21 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
     for barrio, df in zip(barrios, all_dfs):
         if df is None or df.empty: continue
         tmp = df.copy()
-        tmp["barrio"] = re.sub(r'_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$', '', barrio)
+        # Aseguramos que el nombre del barrio esté limpio
+        tmp["barrio"] = slugify(os.path.splitext(barrio)[0].replace('-', ' '))
         df_all.append(tmp)
+
     if not df_all:
         parts.append("<p>No hay datos.</p></div></body></html>")
         return "".join(parts)
+        
     df_all = pd.concat(df_all, ignore_index=True)
-    barrios_unicos = df_all["barrio"].unique().tolist()
+    
+    # Filtramos la lista de barrios únicos para usar en los enlaces
+    barrios_unicos = df_all['barrio'].unique().tolist()
     
     parts.append('<div class="toc"><h3>Navegación</h3><div style="display:flex;flex-wrap:wrap;gap:10px;"><a href="#resumen" class="pill">Resumen general</a>')
-    for b in barrios_unicos: parts.append(f'<a href="#{slugify(b)}" class="pill">{b}</a>')
+    for b_slug in barrios_unicos: parts.append(f'<a href="#{b_slug}" class="pill">{b_slug.replace("-", " ").title()}</a>')
     parts.append('</div></div>')
     
     parts.append('<div id="resumen" class="section anchor"><h2>📌 Resumen general</h2>')
@@ -319,15 +331,19 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
     parts.append(fig_html(fig_resumen1))
     parts.append('</div>')
 
-    for i, barrio_nombre in enumerate(barrios_unicos):
-        df = df_all[df_all["barrio"] == barrio_nombre]
+    for i, barrio_slug in enumerate(barrios_unicos):
+        df = df_all[df_all["barrio"] == barrio_slug]
         if df.empty: continue
-        bid = slugify(barrio_nombre)
         color = PALETTE[i % len(PALETTE)]
-        parts.append(f'<div id="{bid}" class="section anchor"><h2>🏘️ {barrio_nombre}</h2><div class="grid grid-3">')
+        
+        # Recuperamos el nombre original del barrio para el título
+        barrio_nombre_original = barrio_slug.replace('-', ' ').title()
+        
+        parts.append(f'<div id="{barrio_slug}" class="section anchor"><h2>🏘️ {barrio_nombre_original}</h2><div class="grid grid-3">')
         
         # --- Mapa del barrio ---
-        mapa_html = generar_mapa_barrio(barrio_nombre, geojson_gdf)
+        # Pasamos el nombre del barrio no estandarizado para la visualización en el título del mapa si fuera necesario
+        mapa_html = generar_mapa_barrio(barrio_nombre_original, geojson_gdf)
         if mapa_html:
             parts.append(f'<div style="grid-column: span 3; border-radius:10px; overflow:hidden;">{mapa_html}</div>')
         # ---------------------------
@@ -355,18 +371,29 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
 # ==============================
 def main():
     try:
-        # Renombra la columna 'NOMBRE' a 'nombre' para que la lógica de slugify funcione
         geojson_gdf = gpd.read_file("BARRIOS.shp")
-        geojson_gdf.rename(columns={'NOMBRE': 'nombre'}, inplace=True)
-        geojson_gdf['slug'] = geojson_gdf['nombre'].apply(slugify)
+        # Identificar el campo de nombre. Puedes inspeccionar el GeoDataFrame para confirmarlo.
+        # Basado en la información previa, NOMBRE, BARRIO_MAY o BARRIO_MT son las opciones.
+        # BARRIO_MAY suele ser un buen candidato.
+        if 'NOMBRE' in geojson_gdf.columns:
+            nombre_col = 'NOMBRE'
+        elif 'BARRIO_MAY' in geojson_gdf.columns:
+            nombre_col = 'BARRIO_MAY'
+        else:
+            raise ValueError("No se encontró una columna de nombre de barrio en el SHP. Por favor, revisa el archivo.")
+
+        # Creamos una columna estandarizada para hacer "match"
+        geojson_gdf['slug'] = geojson_gdf[nombre_col].apply(slugify)
+        geojson_gdf['nombre'] = geojson_gdf[nombre_col]
+
         print("✅ Archivo GeoJSON de barrios de Madrid cargado.")
     except Exception as e:
         print(f"❌ Error al cargar el archivo GeoJSON: {e}")
-        print("❌ Asegúrate de tener 'BARRIOS.shp' en la misma carpeta y de haber instalado 'geopandas'.")
+        print("❌ Asegúrate de tener todos los archivos SHP en la misma carpeta e instalado 'geopandas'.")
         geojson_gdf = None
         return
 
-    token = get_onedrive_token()
+    token = get_onedive_token()
     print("✅ Token de OneDrive obtenido.")
 
     folders = list_folders(BASE_FOLDER, token)
@@ -386,7 +413,9 @@ def main():
 
     barrios, dfs = [], []
     for a in sorted(archivos_xlsx, key=lambda x: x['name']):
-        barrio_nombre = os.path.splitext(a["name"])[0]
+        barrio_nombre_original = os.path.splitext(a["name"])[0]
+        # Creamos un nombre estandarizado para hacer match con el GeoJSON
+        barrio_slug = slugify(barrio_nombre_original)
         file_path = f"{carpeta_path}/{a['name']}"
         try:
             print(f"📥 Descargando y procesando: {a['name']}")
@@ -400,7 +429,7 @@ def main():
             if 'hasLift' in df.columns:
                 df['lift_label'] = df['hasLift'].apply(lambda x: 'Con Ascensor' if x else 'Sin Ascensor')
             
-            barrios.append(barrio_nombre)
+            barrios.append(barrio_slug)
             dfs.append(df)
         except Exception as e:
             print(f"⚠️ Error procesando {a['name']}: {e}")
