@@ -393,7 +393,7 @@ def main():
         geojson_gdf = None
         return
 
-    token = get_onedive_token()
+    token = get_onedrive_token()
     print("✅ Token de OneDrive obtenido.")
 
     folders = list_folders(BASE_FOLDER, token)
