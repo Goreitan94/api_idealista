@@ -72,77 +72,102 @@ def fmt_eur(x):
         return ""
 
 def fig_html(fig) -> str:
-    return fig.to_html(full_html=False, include_plotlyjs=False, config={"displaylogo": False, "modeBarButtonsToRemove": ["select", "lasso2d", "hovercompare"], "scrollZoom": True, "responsive": True})
-
-# ==============================
-# Generar mapa del barrio (VERSIÓN CORREGIDA Y MEJORADA)
-# ==============================
-def generar_mapa_barrio(barrio_nombre, geojson_gdf):
-    barrio_slug = slugify(barrio_nombre)
-    barrio_seleccionado = geojson_gdf[geojson_gdf['slug'] == barrio_slug].copy()
-
-    df_mapa = geojson_gdf.copy()
-    df_mapa['color_del_mapa'] = '#404040' 
-    df_mapa['nombre_para_hover'] = df_mapa['nombre']
-    
-    # Preparamos las columnas para el estilo de los bordes
-    df_mapa['border_width'] = 1
-    df_mapa['border_color'] = 'rgba(255,255,255,0.2)'
-
-    center = {"lat": 40.4168, "lon": -3.7038}
-    zoom_level = 9.5
-    
-    if not barrio_seleccionado.empty:
-        # Resaltamos el barrio seleccionado con un color de la paleta y un borde más grueso
-        idx_selected = barrio_seleccionado.index[0]
-        df_mapa.loc[idx_selected, 'color_del_mapa'] = PALETTE[0]
-        df_mapa.loc[idx_selected, 'border_width'] = 2
-        df_mapa.loc[idx_selected, 'border_color'] = 'white'
-        
-        # CÁLCULO DE CENTRO Y ZOOM DINÁMICO
-        centroid = barrio_seleccionado.geometry.iloc[0].centroid
-        center = {"lat": centroid.y, "lon": centroid.x}
-        
-        # Calcular el zoom basado en el área del barrio (solución de la otra IA)
-        area = barrio_seleccionado.geometry.iloc[0].area
-        zoom_level = max(11, min(15, 16 - np.log10(area * 1000000)))
-        
-        print(f"✅ Barrio '{barrio_nombre}' encontrado. Zoom calculado: {zoom_level}")
-    else:
-        print(f"⚠️ Barrio '{barrio_nombre}' (slug: '{barrio_slug}') no encontrado en el GeoJSON.")
-        
-    fig = px.choropleth_mapbox(
-        df_mapa,
-        geojson=df_mapa.geometry,
-        locations=df_mapa.index,
-        color='color_del_mapa',
-        center=center,
-        zoom=zoom_level,
-        opacity=0.7,
-        custom_data=['nombre_para_hover']
-    )
-    
-    # Actualizamos el estilo del borde de la traza para que use nuestras nuevas columnas
-    fig.update_traces(marker_line_width=df_mapa['border_width'], marker_line_color=df_mapa['border_color'])
-
-    fig.update_layout(
-        title="",
-        margin={"r":0,"t":0,"l":0,"b":0},
-        mapbox_style="carto-positron", # Volvemos al estilo claro
-        showlegend=False,
-        height=400 # Altura fija para consistencia
-    )
-
-    hovertemplate = '<b>%{customdata[0]}</b><extra></extra>'
-    fig.update_traces(hovertemplate=hovertemplate)
-
-    return fig_html(fig)
-# =========================================================
-
+    return fig.to_html(full_html=False, include_plotlyjs=True, config={"displaylogo": False, "modeBarButtonsToRemove": ["select", "lasso2d", "hovercompare"], "scrollZoom": True, "responsive": True})
 
 # ==============================
 # Gráficos y Tablas Helpers
 # ==============================
+def generar_mapa_barrio(barrio_nombre, geojson_gdf, df_barrio):
+    print(f"\n🗺️ Iniciando generación de mapa para el barrio: '{barrio_nombre}'")
+    barrio_slug = slugify(barrio_nombre)
+    barrio_seleccionado_gdf = geojson_gdf[geojson_gdf['slug'] == barrio_slug].copy()
+    
+    df_mapa = geojson_gdf.copy()
+    df_mapa['color_del_mapa'] = '#404040' 
+    df_mapa['nombre_para_hover'] = df_mapa['nombre']
+    
+    border_width = [1] * len(df_mapa)
+    border_color = ['rgba(255,255,255,0.2)'] * len(df_mapa)
+    
+    center = {"lat": 40.4168, "lon": -3.7038}
+    zoom_level = 9.5
+    
+    if not barrio_seleccionado_gdf.empty:
+        print("✅ Polígono del barrio encontrado en el GeoJSON.")
+        # Paso crucial: convertimos el GeoDataFrame a WGS84 (EPSG:4326) para obtener coordenadas de lat/lon
+        barrio_seleccionado_wgs84 = barrio_seleccionado_gdf.to_crs(epsg=4326)
+        
+        idx_selected = barrio_seleccionado_gdf.index[0]
+        df_mapa.loc[idx_selected, 'color_del_mapa'] = PALETTE[0]
+        border_width[idx_selected] = 2
+        border_color[idx_selected] = 'white'
+        
+        centroid = barrio_seleccionado_wgs84.geometry.iloc[0].centroid
+        center = {"lat": centroid.y, "lon": centroid.x}
+        
+        area = barrio_seleccionado_gdf.geometry.iloc[0].area
+        zoom_level = max(11, min(15, 16 - np.log10(area * 1000000)))
+        print(f"✅ Centro del mapa calculado a partir del GeoJSON. Lat: {center['lat']:.2f}, Lon: {center['lon']:.2f}, Zoom: {zoom_level:.2f}")
+    else:
+        print(f"⚠️ Polígono del barrio no encontrado en el GeoJSON. Intentando usar coordenadas de los datos.")
+        if not df_barrio.empty and 'latitude' in df_barrio.columns and 'longitude' in df_barrio.columns:
+            center = {"lat": df_barrio['latitude'].mean(), "lon": df_barrio['longitude'].mean()}
+            zoom_level = 11.5
+            print(f"✅ Centro del mapa calculado a partir de los datos. Lat: {center['lat']:.2f}, Lon: {center['lon']:.2f}, Zoom: {zoom_level:.2f}")
+        else:
+            center = {"lat": 40.4168, "lon": -3.7038}
+            zoom_level = 9.5
+            print("❌ No hay coordenadas en los datos. Usando el centro por defecto de Madrid.")
+
+    fig = go.Figure()
+
+    print("🖼️ Añadiendo trazo de polígonos al mapa.")
+    choropleth_trace = px.choropleth_mapbox(
+        df_mapa,
+        geojson=df_mapa.geometry,
+        locations=df_mapa.index,
+        color='color_del_mapa',
+        custom_data=['nombre_para_hover']
+    ).data[0]
+    
+    choropleth_trace.marker.line.width = border_width
+    choropleth_trace.marker.line.color = border_color
+    
+    fig.add_trace(choropleth_trace)
+
+    if not df_barrio.empty and 'latitude' in df_barrio.columns and 'longitude' in df_barrio.columns:
+        print(f"📌 Añadiendo {len(df_barrio)} puntos de inmuebles al mapa.")
+        fig.add_trace(go.Scattermapbox(
+            lat=df_barrio['latitude'],
+            lon=df_barrio['longitude'],
+            mode='markers',
+            marker=go.scattermapbox.Marker(
+                size=8,
+                color=PALETTE[3],
+                opacity=0.7,
+                symbol='circle'
+            ),
+            hovertext=df_barrio['price'].apply(fmt_eur) + ' | ' + df_barrio['size'].astype(str) + ' m²',
+            hoverinfo='text',
+            name='Inmuebles'
+        ))
+
+    else:
+        print("❌ No se encontraron datos de latitud/longitud en el DataFrame del barrio. No se añadirán puntos.")
+
+    fig.update_layout(
+        title="",
+        margin={"r":0,"t":0,"l":0,"b":0},
+        mapbox_style="carto-positron",
+        mapbox_zoom=zoom_level,
+        mapbox_center=center,
+        showlegend=False,
+        height=400
+    )
+    
+    print("✅ Mapa generado correctamente.")
+    return fig_html(fig)
+
 def histograma(df, col, title, color):
     if col not in df.columns or df[col].dropna().empty: return ""
     fig = px.histogram(df, x=col, nbins=30, template=TEMPLATE, title=title)
@@ -164,90 +189,52 @@ def scatter_precio_size(df, color):
 def scatter_price_size_trend(df, title, color):
     if not set(["price_per_m2", "size"]).issubset(df.columns) or df[["price_per_m2","size"]].dropna().empty: return ""
     fig = px.scatter(
-        df,
-        x="size",
-        y="price_per_m2",
-        title=title,
-        template=TEMPLATE,
-        color_discrete_sequence=[color],
-        hover_data=["price", "rooms"],
-        opacity=0.6,
-        trendline="lowess",
-        trendline_options=dict(frac=0.3)
+        df, x="size", y="price_per_m2", title=title, template=TEMPLATE,
+        color_discrete_sequence=[color], hover_data=["price", "rooms"],
+        opacity=0.6, trendline="lowess", trendline_options=dict(frac=0.3)
     )
     fig.update_traces(marker=dict(size=6, line=dict(width=0.5, color='rgba(255,255,255,0.4)')))
-    fig.update_layout(
-        xaxis_title="Tamaño (m²)",
-        yaxis_title="Precio por m² (€/m²)",
-        hovermode="x unified"
-    )
+    fig.update_layout(xaxis_title="Tamaño (m²)", yaxis_title="Precio por m² (€/m²)", hovermode="x unified")
     return fig_html(fig)
 
 def bar_chart_features(df, title, color):
-    if "exterior_label" not in df.columns or "lift_label" not in df.columns or df.empty:
-        return ""
+    if "exterior_label" not in df.columns or "lift_label" not in df.columns or df.empty: return ""
     df_grouped = df.groupby(['exterior_label', 'lift_label'])['price_per_m2'].mean().reset_index()
     df_grouped['category'] = df_grouped['exterior_label'] + ' / ' + df_grouped['lift_label']
     custom_order = ['Exterior / Con Ascensor', 'Exterior / Sin Ascensor', 'Interior / Con Ascensor', 'Interior / Sin Ascensor']
     df_grouped['category'] = pd.Categorical(df_grouped['category'], categories=custom_order, ordered=True)
     df_grouped = df_grouped.sort_values('category')
     fig = px.bar(
-        df_grouped,
-        x="category",
-        y="price_per_m2",
-        title=title,
-        template=TEMPLATE,
-        color='exterior_label',
-        color_discrete_map={'Exterior': color, 'Interior': 'rgba(255,255,255,0.4)'}
+        df_grouped, x="category", y="price_per_m2", title=title, template=TEMPLATE,
+        color='exterior_label', color_discrete_map={'Exterior': color, 'Interior': 'rgba(255,255,255,0.4)'}
     )
-    fig.update_layout(
-        xaxis_title="",
-        yaxis_title="€/m² Medio",
-        legend_title_text="Tipo de Vivienda",
-    )
+    fig.update_layout(xaxis_title="", yaxis_title="€/m² Medio", legend_title_text="Tipo de Vivienda")
     return fig_html(fig)
 
 def bar_chart_lift_impact(df, title, color_lift_true='#6c9ef8', color_lift_false='rgba(255,255,255,0.4)'):
-    if "lift_label" not in df.columns or df["lift_label"].dropna().empty:
-        return ""
+    if "lift_label" not in df.columns or df["lift_label"].dropna().empty: return ""
     df_grouped = df.groupby("lift_label")["price_per_m2"].mean().reset_index()
     df_grouped['lift_label'] = pd.Categorical(df_grouped['lift_label'], categories=['Con Ascensor', 'Sin Ascensor'], ordered=True)
     df_grouped = df_grouped.sort_values('lift_label')
     fig = px.bar(
-        df_grouped,
-        x="lift_label",
-        y="price_per_m2",
-        title=title,
-        template=TEMPLATE,
-        color="lift_label",
-        color_discrete_map={'Con Ascensor': color_lift_true, 'Sin Ascensor': color_lift_false},
+        df_grouped, x="lift_label", y="price_per_m2", title=title, template=TEMPLATE,
+        color="lift_label", color_discrete_map={'Con Ascensor': color_lift_true, 'Sin Ascensor': color_lift_false},
         text="price_per_m2"
     )
     fig.update_traces(texttemplate='%{text:,.0f}€/m²', textposition='outside')
-    fig.update_layout(
-        xaxis_title="",
-        yaxis_title="€/m² Medio",
-        uniformtext_minsize=8, uniformtext_mode='hide',
-        showlegend=False
-    )
+    fig.update_layout(xaxis_title="", yaxis_title="€/m² Medio", uniformtext_minsize=8, uniformtext_mode='hide', showlegend=False)
     fig.update_yaxes(range=[0, df_grouped["price_per_m2"].max() * 1.2])
     return fig_html(fig)
 
 def bar_price_exterior(df, title, color_exterior='#6c9ef8', color_interior='rgba(255,255,255,0.4)'):
-    if "exterior_label" not in df.columns or df["price_per_m2"].dropna().empty:
-        return ""
+    if "exterior_label" not in df.columns or df["price_per_m2"].dropna().empty: return ""
     df_grouped = df.groupby("exterior_label")["price_per_m2"].mean().reset_index()
     order = ['Exterior', 'Interior']
     df_grouped['exterior_label'] = pd.Categorical(df_grouped['exterior_label'], categories=order, ordered=True)
     df_grouped = df_grouped.sort_values('exterior_label')
     fig = px.bar(
-        df_grouped,
-        x="exterior_label",
-        y="price_per_m2",
-        title=title,
-        template=TEMPLATE,
-        color='exterior_label',
-        color_discrete_map={'Exterior': color_exterior, 'Interior': color_interior},
+        df_grouped, x="exterior_label", y="price_per_m2", title=title, template=TEMPLATE,
+        color='exterior_label', color_discrete_map={'Exterior': color_exterior, 'Interior': color_interior},
         text='price_per_m2'
     )
     fig.update_traces(texttemplate='%{text:,.0f}€/m²', textposition='outside')
@@ -305,20 +292,12 @@ def tabla_html(df, title, sort_col, ascending, cols_order):
 # ==============================
 def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fecha: str, geojson_gdf):
     parts = [f"""
-<!doctype html><html lang="es"><head><meta charset="utf-8" /><title>UrbenEye — Informe Interactivo — {fecha}</title><meta name="viewport" content="width=device-width, initial-scale=1" /><script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script><style>:root{{--bg:#0b1020;--card:#121a33;--ink:#e6ecff;--muted:#a8b2d1;--accent:#6c9ef8;}}html,body{{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}} .wrap{{max-width:1200px;margin:40px auto;padding:0 16px;}} .hero{{background:radial-gradient(1200px 400px at 20% -20%,rgba(108,158,248,0.25),transparent),radial-gradient(1000px 500px at 120% 20%,rgba(255,122,89,0.20),transparent);border:1px solid rgba(255,255,255,0.06);border-radius:24px;padding:28px 28px 18px;margin-bottom:24px;box-shadow:0 20px 60px rgba(0,0,0,0.35),inset 0 1px 0 rgba(255,255,255,0.03);}} h1{{font-size:32px;margin:0 0 6px;}} .sub{{color:var(--muted);font-size:14px;}} .toc{{background:#0f1630;border:1px solid rgba(255,255,255,0.06);border-radius:14px;padding:14px 16px;margin:18px 0 28px;}} .toc h3{{margin:0 0 8px;font-size:15px;color:var(--muted);}}
-    /* --- ADAPTACIÓN: evitar que .toc a (links normales) sobrescriban el color de las .pill --- */
-    .toc a:not(.pill){{color:var(--ink);text-decoration:none;}} 
-    .toc a.notpill_hover:hover{{color:var(--accent);}} 
-    /* estilo de las píldoras (pills): texto oscuro sobre fondo claro para buen contraste */
-    .toc a.pill{{color:#081229;background:#cfe1ff;border-radius:999px;padding:6px 12px;font-size:13px;text-decoration:none;display:inline-block;}} 
-    .toc a.pill:hover{{background:#9fc9ff;color:#03112a;text-decoration:none;}}
-    .section{{background:var(--card);border:1px solid rgba(255,255,255,0.06);border-radius:18px;padding:14px;margin:14px 0 22px;}} .section > h2{{font-size:20px;margin:8px 6px 10px;}} .pill{{display:inline-block;font-size:12px;color:#081229;background:#cfe1ff;border-radius:999px;padding:2px 10px;margin-left:8px;}} .pill a{{color:#081229;text-decoration:none;}} .pill a:hover{{color:#004488;}} .grid{{display:grid;grid-template-columns:1fr;gap:14px;}} @media(min-width:900px){{.grid-2{{grid-template-columns:1fr 1fr;}} .grid-3{{grid-template-columns:1fr 1fr 1fr;}}}} .anchor{{scroll-margin-top:20px;}}</style></head><body><div class="wrap"><div class="hero"><h1>📊 UrbenEye — Informe Interactivo — {fecha}</h1><div class="sub">Fuente: Idealista API | Generado Automáticamente</div></div>
-""" ]
+<!doctype html><html lang="es"><head><meta charset="utf-8" /><title>UrbenEye — Informe Interactivo — {fecha}</title><meta name="viewport" content="width=device-width, initial-scale=1" /><script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script><style>:root{{--bg:#0b1020;--card:#121a33;--ink:#e6ecff;--muted:#a8b2d1;--accent:#6c9ef8;}}html,body{{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-syste...""" ]
     df_all = []
     for barrio, df in zip(barrios, all_dfs):
         if df is None or df.empty: continue
         tmp = df.copy()
-        tmp["barrio"] = slugify(os.path.splitext(barrio)[0].replace('-', ' '))
+        tmp["barrio"] = barrio
         df_all.append(tmp)
 
     if not df_all:
@@ -328,6 +307,12 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
     df_all = pd.concat(df_all, ignore_index=True)
     
     barrios_unicos = df_all['barrio'].unique().tolist()
+    
+    parts.append("""...
+    .toc a.pill{color:#081229;background:#cfe1ff;border-radius:999px;padding:6px 12px;font-size:13px;text-decoration:none;display:inline-block;} 
+    .toc a.pill:hover{background:#9fc9ff;color:#03112a;text-decoration:none;}
+    .section{background:var(--card);border:1px solid rgba(255,255,255,0.06);border-radius:18px;padding:14px;margin:14px 0 22px;} .section > h2{font-size:20px;margin:8px 6px 10px;} .pill{display:inline-block;font-size:12px;color:#081229;background:#cfe1ff;border-radius:999px;padding:2px 10px;margin-left:8px;} .pill a{color:#081229;text-decoration:none;} .pill a:hover{color:#004488;} .grid{display:grid;grid-template-columns:1fr;gap:14px;} @media(min-width:900px){.grid-2{grid-template-columns:1fr 1fr;} .grid-3{grid-template-columns:1fr 1fr 1fr;}} .anchor{scroll-margin-top:20px;}</style></head><body><div class="wrap"><div class="hero"><h1>📊 UrbenEye — Informe Interactivo — """ + fecha + """</h1><div class="sub">Fuente: Idealista API | Generado Automáticamente</div></div>
+    ...""")
     
     parts.append('<div class="toc"><h3>Navegación</h3><div style="display:flex;flex-wrap:wrap;gap:10px;"><a href="#resumen" class="pill">Resumen general</a>')
     for b_slug in barrios_unicos: parts.append(f'<a href="#{b_slug}" class="pill">{b_slug.replace("-", " ").title()}</a>')
@@ -348,7 +333,7 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
         
         parts.append(f'<div id="{barrio_slug}" class="section anchor"><h2>🏘️ {barrio_nombre_original}</h2><div class="grid grid-3">')
         
-        mapa_html = generar_mapa_barrio(barrio_nombre_original, geojson_gdf)
+        mapa_html = generar_mapa_barrio(barrio_nombre_original, geojson_gdf, df)
         if mapa_html:
             parts.append(f'<div style="grid-column: span 3; border-radius:10px; overflow:hidden;">{mapa_html}</div>')
         
@@ -385,7 +370,6 @@ def main():
 
         geojson_gdf['slug'] = geojson_gdf[nombre_col].apply(slugify)
         geojson_gdf['nombre'] = geojson_gdf[nombre_col]
-
         print("✅ Archivo GeoJSON de barrios de Madrid cargado.")
     except Exception as e:
         print(f"❌ Error al cargar el archivo GeoJSON: {e}")
@@ -433,7 +417,7 @@ def main():
         except Exception as e:
             print(f"⚠️ Error procesando {a['name']}: {e}")
 
-    print("📊 Generando informe HTML completo...")
+    print("\n📊 Generando informe HTML completo...")
     full_html = generar_informe_global(dfs, barrios, fecha, geojson_gdf)
 
     out_folder_pages = os.environ.get("OUTPUT_FOLDER", "output_html")
