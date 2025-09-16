@@ -76,7 +76,7 @@ def fig_html(fig) -> str:
     return fig.to_html(full_html=False, include_plotlyjs=False, config={"displaylogo": False, "modeBarButtonsToRemove": ["select", "lasso2d"]})
 
 # ==============================
-# Generar mapa del barrio
+# Generar mapa del barrio (VERSIÓN MEJORADA)
 # ==============================
 def generar_mapa_barrio(barrio_nombre, geojson_gdf):
     barrio_slug = slugify(barrio_nombre)
@@ -85,7 +85,7 @@ def generar_mapa_barrio(barrio_nombre, geojson_gdf):
     # Creando una copia del GeoDataFrame completo para la visualización
     df_mapa = geojson_gdf.copy()
     
-    # Asignamos un color base para todos los barrios (por ejemplo, un gris)
+    # Asignamos un color base para todos los barrios (un gris oscuro)
     df_mapa['color_del_mapa'] = '#404040' 
     df_mapa['nombre_para_hover'] = df_mapa['nombre']
     
@@ -116,10 +116,21 @@ def generar_mapa_barrio(barrio_nombre, geojson_gdf):
     
     fig.update_traces(marker_line_width=1, marker_line_color='rgba(255,255,255,0.2)')
     
+    # Agregamos una nueva capa (traza) para el barrio seleccionado, con un borde más grueso
+    if not barrio_seleccionado.empty:
+        fig.add_trace(go.Choroplethmapbox(
+            geojson=barrio_seleccionado.geometry,
+            locations=barrio_seleccionado.index,
+            marker_line_width=2, # Borde más grueso
+            marker_line_color='white', # Color de borde destacado
+            marker_opacity=0.0,  # Hacemos que el interior sea transparente para que solo se vea el borde
+            hoverinfo='skip'
+        ))
+
     fig.update_layout(
         title="",
         margin={"r":0,"t":0,"l":0,"b":0},
-        mapbox_style="carto-positron",
+        mapbox_style="carto-darkmatter", # Estilo oscuro para mejor visualización
         showlegend=False
     )
 
