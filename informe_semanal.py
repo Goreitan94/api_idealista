@@ -72,10 +72,10 @@ def fmt_eur(x):
         return ""
 
 def fig_html(fig) -> str:
-    return fig.to_html(full_html=False, include_plotlyjs=False, config={"displaylogo": False, "modeBarButtonsToRemove": ["select", "lasso2d"]})
+    return fig.to_html(full_html=False, include_plotlyjs=False, config={"displaylogo": False, "modeBarButtonsToRemove": ["select", "lasso2d", "hovercompare"], "scrollZoom": True, "responsive": True})
 
 # ==============================
-# Generar mapa del barrio (VERSIÓN CORREGIDA)
+# Generar mapa del barrio (VERSIÓN CORREGIDA Y MEJORADA)
 # ==============================
 def generar_mapa_barrio(barrio_nombre, geojson_gdf):
     barrio_slug = slugify(barrio_nombre)
@@ -89,19 +89,27 @@ def generar_mapa_barrio(barrio_nombre, geojson_gdf):
     df_mapa['border_width'] = 1
     df_mapa['border_color'] = 'rgba(255,255,255,0.2)'
 
-    if barrio_seleccionado.empty:
-        print(f"⚠️ Barrio '{barrio_nombre}' (slug: '{barrio_slug}') no encontrado en el GeoJSON.")
-        center = {"lat": 40.4168, "lon": -3.7038}
-        zoom_level = 9.5
-    else:
+    center = {"lat": 40.4168, "lon": -3.7038}
+    zoom_level = 9.5
+    
+    if not barrio_seleccionado.empty:
         # Resaltamos el barrio seleccionado con un color de la paleta y un borde más grueso
-        df_mapa.loc[df_mapa['slug'] == barrio_slug, 'color_del_mapa'] = PALETTE[0]
-        df_mapa.loc[df_mapa['slug'] == barrio_slug, 'border_width'] = 2
-        df_mapa.loc[df_mapa['slug'] == barrio_slug, 'border_color'] = 'white'
+        idx_selected = barrio_seleccionado.index[0]
+        df_mapa.loc[idx_selected, 'color_del_mapa'] = PALETTE[0]
+        df_mapa.loc[idx_selected, 'border_width'] = 2
+        df_mapa.loc[idx_selected, 'border_color'] = 'white'
         
+        # CÁLCULO DE CENTRO Y ZOOM DINÁMICO
         centroid = barrio_seleccionado.geometry.iloc[0].centroid
         center = {"lat": centroid.y, "lon": centroid.x}
-        zoom_level = 12.5
+        
+        # Calcular el zoom basado en el área del barrio (solución de la otra IA)
+        area = barrio_seleccionado.geometry.iloc[0].area
+        zoom_level = max(11, min(15, 16 - np.log10(area * 1000000)))
+        
+        print(f"✅ Barrio '{barrio_nombre}' encontrado. Zoom calculado: {zoom_level}")
+    else:
+        print(f"⚠️ Barrio '{barrio_nombre}' (slug: '{barrio_slug}') no encontrado en el GeoJSON.")
         
     fig = px.choropleth_mapbox(
         df_mapa,
@@ -121,7 +129,8 @@ def generar_mapa_barrio(barrio_nombre, geojson_gdf):
         title="",
         margin={"r":0,"t":0,"l":0,"b":0},
         mapbox_style="carto-positron", # Volvemos al estilo claro
-        showlegend=False
+        showlegend=False,
+        height=400 # Altura fija para consistencia
     )
 
     hovertemplate = '<b>%{customdata[0]}</b><extra></extra>'
