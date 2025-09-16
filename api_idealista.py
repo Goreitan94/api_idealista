@@ -24,7 +24,7 @@ IDEALISTA_SECRET = os.getenv("IDEALISTA_SECRET")
 barrios = {
     # Nombres corregidos para hacer match con el shapefile
     "Palomeras Sureste": "40.387095,-3.639793",
-    "Nueva Numancia": "40.397566,-3.661992",
+    "Numancia": "40.397566,-3.661992",
     "Moscardo": "40.390137,-3.706201",
     "San Fermin": "40.371046,-3.690084",
     "Orcasur": "40.367687,-3.700491",
@@ -40,7 +40,7 @@ barrios = {
     "Apostol Santiago": "40.476923,-3.660153",
     "Pinar del Rey": "40.471138,-3.650982",
     "Vista Alegre": "40.385854,-3.750116",
-    "San Blas": "40.435440,-3.631840",
+    "Simancas": "40.435440,-3.631840",
     "Hortaleza": "40.467226,-3.650239",
     "Tetuan": "40.463301,-3.701233",
     "Pacifico": "40.405677,-3.673614",
