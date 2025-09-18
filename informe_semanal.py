@@ -10,6 +10,7 @@ from io import BytesIO
 import geopandas as gpd
 import unicodedata
 import json
+from pathlib import Path
 
 # ==============================
 # Config
@@ -28,8 +29,9 @@ PALETTE = px.colors.qualitative.Plotly
 def get_onedrive_token():
     token_url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
     data = {{"grant_type": "client_credentials", "client_id": CLIENT_ID, "client_secret": CLIENT_SECRET, "scope": "https://graph.microsoft.com/.default"}}
-    response = requests.post(token_url, data=data)
-    token_data = response.json()
+    resp = requests.post(token_url, data=data)
+    resp.raise_for_status()
+    token_data = resp.json()
     if "access_token" in token_data:
         return token_data["access_token"]
     else:
@@ -77,9 +79,9 @@ def fmt_eur(x):
 # ==============================
 def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fecha: str):
     print("DEBUG: Iniciando la generación del informe...")
-    out_folder_pages = os.environ.get("OUTPUT_FOLDER", "output_html")
-    os.makedirs(out_folder_pages, exist_ok=True)
-    os.makedirs(os.path.join(out_folder_pages, "datos_barrios"), exist_ok=True)
+    out_folder_pages = Path(os.environ.get("OUTPUT_FOLDER", "output_html"))
+    out_folder_pages.mkdir(parents=True, exist_ok=True)
+    (out_folder_pages / "datos_barrios").mkdir(parents=True, exist_ok=True)
 
     if not all_dfs:
         print("DEBUG: No hay datos para generar el informe. Terminando.")
@@ -89,9 +91,8 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
 
     # 1. Generar un JSON con los datos del mapa (todos los puntos)
     map_data = df_all[['latitude', 'longitude', 'price', 'size', 'url', 'barrio_slug']].to_dict('records')
-    map_path = os.path.join(out_folder_pages, "mapa_data.json")
-    with open(map_path, "w", encoding="utf-8") as f:
-        json.dump({{"properties": map_data}}, f, ensure_ascii=False, indent=2)
+    map_path = out_folder_pages / "mapa_data.json"
+    map_path.write_text(json.dumps({{"properties": map_data}}, ensure_ascii=False, indent=2), encoding="utf-8")
     print("✅ Archivo 'mapa_data.json' creado con éxito.")
 
     # 2. Generar un JSON individual para cada barrio
@@ -108,9 +109,8 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
             "barrio_data": df[['price', 'size', 'rooms', 'exterior_label', 'lift_label', 'price_per_m2', 'url']].to_dict('records')
         }}
         
-        json_path = os.path.join(out_folder_pages, "datos_barrios", f"datos_barrio_{{barrio_slug}}.json")
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump(barrio_data, f, ensure_ascii=False, indent=2)
+        json_path = out_folder_pages / "datos_barrios" / f"datos_barrio_{{barrio_slug}}.json"
+        json_path.write_text(json.dumps(barrio_data, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"✅ Archivo '{{json_path}}' creado.")
 
     # 3. Generar el HTML estático con el nuevo JavaScript
@@ -225,7 +225,7 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
                 const map_data_response = await fetch('/api_idealista/mapa_data.json').then(r => r.json());
                 const all_properties = map_data_response.properties;
 
-                const all_barrios_data = geojson.features.map(f => ({...f.properties, 'color_del_mapa': '#404040'}));
+                const all_barrios_data = geojson.features.map(f => ({{...f.properties, 'color_del_mapa': '#404040'}}));
                 
                 const layout_mapa = {{
                     mapbox_style: 'carto-positron',
@@ -323,9 +323,8 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
 </html>
 """
     
-    out_path_pages = os.path.join(out_folder_pages, "index.html")
-    with open(out_path_pages, "w", encoding="utf-8") as f:
-        f.write(html_content)
+    out_path_pages = out_folder_pages / "index.html"
+    out_path_pages.write_text(html_content, encoding="utf-8")
     print(f"DEBUG: Archivo 'index.html' guardado en la ruta: {out_path_pages}")
     print(f"✅ Informe final (HTML) guardado en '{out_path_pages}'.")
     
@@ -348,9 +347,9 @@ def main():
         geojson_gdf['slug'] = geojson_gdf[nombre_col].apply(slugify)
         geojson_gdf['nombre'] = geojson_gdf[nombre_col]
         
-        out_folder_pages = os.environ.get("OUTPUT_FOLDER", "output_html")
-        os.makedirs(out_folder_pages, exist_ok=True)
-        geojson_path = os.path.join(out_folder_pages, "BARRIOS.geojson")
+        out_folder_pages = Path(os.environ.get("OUTPUT_FOLDER", "output_html"))
+        out_folder_pages.mkdir(parents=True, exist_ok=True)
+        geojson_path = out_folder_pages / "BARRIOS.geojson"
         
         geojson_gdf.to_file(geojson_path, driver="GeoJSON")
         print(f"DEBUG: Archivo 'BARRIOS.geojson' guardado en la ruta: {geojson_path}")
