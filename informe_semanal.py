@@ -77,6 +77,7 @@ def fmt_eur(x):
 # ==============================
 def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fecha: str):
     # Genera los datos para los gráficos y tablas en un JSON
+    print("DEBUG: Iniciando la generación del informe...")
     report_data = {
         "fecha": fecha,
         "barrios_unicos": [slugify(b) for b in barrios],
@@ -85,7 +86,7 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
     }
 
     if not all_dfs:
-        print("No hay datos para generar el informe.")
+        print("DEBUG: No hay datos para generar el informe. Terminando.")
         return
 
     df_all = pd.concat(all_dfs, ignore_index=True)
@@ -116,6 +117,7 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
     json_path = os.path.join(out_folder_pages, "datos_reporte.json")
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(report_data, f, ensure_ascii=False, indent=2)
+    print(f"DEBUG: Archivo 'datos_reporte.json' guardado en la ruta: {json_path}")
     print("✅ Archivo 'datos_reporte.json' creado.")
 
     # Genera el HTML estático que leerá el JSON
@@ -216,7 +218,7 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
 
         async function cargarReporte() {{
             try {{
-                // Corrección final: Rutas absolutas estáticas sin variables
+                // Rutas absolutas estáticas sin variables
                 const [geojson, report_data] = await Promise.all([
                     fetch('/api_idealista/BARRIOS.geojson').then(r => r.json()),
                     fetch('/api_idealista/datos_reporte.json').then(r => r.json())
@@ -335,6 +337,7 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
     out_path_pages = os.path.join(out_folder_pages, "index.html")
     with open(out_path_pages, "w", encoding="utf-8") as f:
         f.write(html_content)
+    print(f"DEBUG: Archivo 'index.html' guardado en la ruta: {out_path_pages}")
     print(f"✅ Informe final (HTML) guardado en '{out_path_pages}'.")
     
     return "Informe y datos listos."
@@ -343,6 +346,7 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
 # Main
 # ==============================
 def main():
+    print("DEBUG: Iniciando el proceso principal...")
     try:
         # Cargar el archivo GeoJSON de barrios de Madrid
         geojson_gdf = gpd.read_file("BARRIOS.shp")
@@ -362,6 +366,7 @@ def main():
         
         # CORRECCIÓN AQUÍ: Pasar la ruta del archivo directamente a la función to_file
         geojson_gdf.to_file(geojson_path, driver="GeoJSON")
+        print(f"DEBUG: Archivo 'BARRIOS.geojson' guardado en la ruta: {geojson_path}")
         print("✅ Archivo GeoJSON de barrios de Madrid guardado para despliegue.")
 
     except Exception as e:
