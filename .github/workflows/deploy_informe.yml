@@ -2,9 +2,9 @@ name: Deploy Informe Interactivo
 
 on:
   schedule:
-    - cron: '15 7 * * FRI'     # Verano (07:15 UTC → 09:15 Madrid)
-    - cron: '15 8 * * FRI'     # Invierno (08:15 UTC → 09:15 Madrid)
-  workflow_dispatch:        # Permite ejecutarlo manualmente también
+    - cron: '15 7 * * FRI'      # Verano (07:15 UTC → 09:15 Madrid)
+    - cron: '15 8 * * FRI'      # Invierno (08:15 UTC → 09:15 Madrid)
+  workflow_dispatch:          # Permite ejecutarlo manualmente también
 
 permissions:
   contents: write
@@ -15,10 +15,12 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
@@ -26,7 +28,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pandas numpy openpyxl plotly requests fuzzywuzzy python-Levenshtein statsmodels geopandas
-
+          sudo apt-get update
+          sudo apt-get install -y libspatialindex-dev
+          
       - name: Generar informe interactivo
         env:
           OUTPUT_FOLDER: output_html
@@ -43,3 +47,5 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./output_html
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
