@@ -8,13 +8,13 @@ on:
 
 permissions:
   contents: write
-  pages: write # Añadimos permisos de páginas para el despliegue nativo
-  id-token: write # Necesario para las nuevas acciones de pages
+  pages: write
+  id-token: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -44,14 +44,11 @@ jobs:
         run: |
           python informe_semanal.py
 
-      - name: Create .nojekyll file
-        run: |
-          touch output_html/.nojekyll
-
-      - name: Deploy informe a GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
+      - name: Upload pages artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./output_html
-          user_name: 'github-actions[bot]'
-          user_email: 'github-actions[bot]@users.noreply.github.com'
+          path: 'output_html'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
