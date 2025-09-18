@@ -95,7 +95,7 @@
 
         async function cargarReporte() {
             try {
-                // Corrección final: Rutas absolutas estáticas sin variables
+                // Rutas absolutas estáticas sin variables
                 const [geojson, report_data] = await Promise.all([
                     fetch('/api_idealista/BARRIOS.geojson').then(r => r.json()),
                     fetch('/api_idealista/datos_reporte.json').then(r => r.json())
