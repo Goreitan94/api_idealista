@@ -27,7 +27,7 @@ PALETTE = px.colors.qualitative.Plotly
 # ==============================
 def get_onedrive_token():
     token_url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
-    data = {"grant_type": "client_credentials", "client_id": CLIENT_ID, "client_secret": CLIENT_SECRET, "scope": "https://graph.microsoft.com/.default"}
+    data = {{"grant_type": "client_credentials", "client_id": CLIENT_ID, "client_secret": CLIENT_SECRET, "scope": "https://graph.microsoft.com/.default"}}
     response = requests.post(token_url, data=data)
     token_data = response.json()
     if "access_token" in token_data:
@@ -37,14 +37,14 @@ def get_onedrive_token():
 
 def list_folders(path, access_token):
     url = f"https://graph.microsoft.com/v1.0/users/eitang@urbeneye.com/drive/root:{path}:/children"
-    headers = {"Authorization": f"Bearer {access_token}"}
+    headers = {{"Authorization": f"Bearer {access_token}"}}
     resp = requests.get(url, headers=headers)
     resp.raise_for_status()
     return resp.json().get("value", [])
 
 def download_excel(path, access_token):
     url = f"https://graph.microsoft.com/v1.0/users/eitang@urbeneye.com/drive/root:{path}:/content"
-    headers = {"Authorization": f"Bearer {access_token}"}
+    headers = {{"Authorization": f"Bearer {access_token}"}}
     resp = requests.get(url, headers=headers)
     resp.raise_for_status()
     return pd.read_excel(BytesIO(resp.content))
@@ -68,7 +68,7 @@ def slugify(text: str) -> str:
 
 def fmt_eur(x):
     try:
-        return f"€{x:,.0f}".replace(",", ".")
+        return f"€{{x:,.0f}}".replace(",", ".")
     except:
         return ""
 
@@ -91,7 +91,7 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
     map_data = df_all[['latitude', 'longitude', 'price', 'size', 'url', 'barrio_slug']].to_dict('records')
     map_path = os.path.join(out_folder_pages, "mapa_data.json")
     with open(map_path, "w", encoding="utf-8") as f:
-        json.dump({"properties": map_data}, f, ensure_ascii=False, indent=2)
+        json.dump({{"properties": map_data}}, f, ensure_ascii=False, indent=2)
     print("✅ Archivo 'mapa_data.json' creado con éxito.")
 
     # 2. Generar un JSON individual para cada barrio
@@ -100,18 +100,18 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
         if df.empty:
             continue
         
-        barrio_data = {
+        barrio_data = {{
             "nombre": barrio_slug.replace('-', ' ').title(),
             "resumen": df["price_per_m2"].mean() if not df.empty else 0,
             "top_caras": df.sort_values("price_per_m2", ascending=False).head(10).to_dict('records'),
             "top_baratas": df.sort_values("price_per_m2", ascending=True).head(10).to_dict('records'),
             "barrio_data": df[['price', 'size', 'rooms', 'exterior_label', 'lift_label', 'price_per_m2', 'url']].to_dict('records')
-        }
+        }}
         
-        json_path = os.path.join(out_folder_pages, "datos_barrios", f"datos_barrio_{barrio_slug}.json")
+        json_path = os.path.join(out_folder_pages, "datos_barrios", f"datos_barrio_{{barrio_slug}}.json")
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(barrio_data, f, ensure_ascii=False, indent=2)
-        print(f"✅ Archivo '{json_path}' creado.")
+        print(f"✅ Archivo '{{json_path}}' creado.")
 
     # 3. Generar el HTML estático con el nuevo JavaScript
     html_content = f"""
@@ -123,30 +123,30 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
     <style>
-        :root{{--bg:#0b1020;--card:#121a33;--ink:#e6ecff;--muted:#a8b2d1;--accent:#6c9ef8;}}
-        html,body{{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,Cantarell,'Open Sans','Helvetica Neue',sans-serif;line-height:1.5;}}
-        .wrap{{max-width:1000px;margin:18px auto;padding:0 18px;}}
-        a{{color:var(--accent);text-decoration:none;}}
-        a:hover{{text-decoration:underline;}}
-        h1,h2,h3{{font-family:'Segoe UI',-apple-system,system-ui,BlinkMacSystemFont,Roboto,Oxygen,Ubuntu,Cantarell,'Open Sans','Helvetica Neue',sans-serif;color:var(--ink);font-weight:700;line-height:1.2;}}
-        .hero{{margin-bottom:30px;text-align:center;}}
-        .hero h1{{font-size:32px;margin-bottom:8px;}}
-        .sub{{color:var(--muted);font-size:14px;}}
-        .toc{{padding:14px;background:var(--card);border:1px solid rgba(255,255,255,0.06);border-radius:18px;margin-bottom:22px;}}
-        .toc h3{{font-size:16px;margin:0 0 10px;}}
-        .toc a.pill{{color:#081229;background:#cfe1ff;border-radius:999px;padding:6px 12px;font-size:13px;text-decoration:none;display:inline-block;}}
-        .toc a.pill:hover{{background:#9fc9ff;color:#03112a;text-decoration:none;}}
-        .section{{background:var(--card);border:1px solid rgba(255,255,255,0.06);border-radius:18px;padding:14px;margin:14px 0 22px;}}
-        .section > h2{{font-size:20px;margin:8px 6px 10px;}}
-        .pill{{display:inline-block;font-size:12px;color:#081229;background:#cfe1ff;border-radius:999px;padding:2px 10px;margin-left:8px;}}
-        .pill a{{color:#081229;text-decoration:none;}}
-        .pill a:hover{{color:#004488;}}
-        .grid{{display:grid;grid-template-columns:1fr;gap:14px;}}
-        @media(min-width:900px){{--grid-2{{grid-template-columns:1fr 1fr;}} --grid-3{{grid-template-columns:1fr 1fr 1fr;}}}}
-        .anchor{{scroll-margin-top:20px;}}
-        table{{border-collapse: collapse;width: 100%;}}
-        th, td{{text-align: left;padding: 8px;border-bottom: 1px solid #ddd;}}
-        th{{background-color: #333;color: white;}}
+        :root{{{{--bg:#0b1020;--card:#121a33;--ink:#e6ecff;--muted:#a8b2d1;--accent:#6c9ef8;}}}}
+        html,body{{{{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,Cantarell,'Open Sans','Helvetica Neue',sans-serif;line-height:1.5;}}}}
+        .wrap{{{{max-width:1000px;margin:18px auto;padding:0 18px;}}}}
+        a{{{{color:var(--accent);text-decoration:none;}}}}
+        a:hover{{{{text-decoration:underline;}}}}
+        h1,h2,h3{{{{font-family:'Segoe UI',-apple-system,system-ui,BlinkMacSystemFont,Roboto,Oxygen,Ubuntu,Cantarell,'Open Sans','Helvetica Neue',sans-serif;color:var(--ink);font-weight:700;line-height:1.2;}}}}
+        .hero{{{{margin-bottom:30px;text-align:center;}}}}
+        .hero h1{{{{font-size:32px;margin-bottom:8px;}}}}
+        .sub{{{{color:var(--muted);font-size:14px;}}}}
+        .toc{{{{padding:14px;background:var(--card);border:1px solid rgba(255,255,255,0.06);border-radius:18px;margin-bottom:22px;}}}}
+        .toc h3{{{{font-size:16px;margin:0 0 10px;}}}}
+        .toc a.pill{{{{color:#081229;background:#cfe1ff;border-radius:999px;padding:6px 12px;font-size:13px;text-decoration:none;display:inline-block;}}}}
+        .toc a.pill:hover{{{{background:#9fc9ff;color:#03112a;text-decoration:none;}}}}
+        .section{{{{background:var(--card);border:1px solid rgba(255,255,255,0.06);border-radius:18px;padding:14px;margin:14px 0 22px;}}}}
+        .section > h2{{{{font-size:20px;margin:8px 6px 10px;}}}}
+        .pill{{{{display:inline-block;font-size:12px;color:#081229;background:#cfe1ff;border-radius:999px;padding:2px 10px;margin-left:8px;}}}}
+        .pill a{{{{color:#081229;text-decoration:none;}}}}
+        .pill a:hover{{{{color:#004488;}}}}
+        .grid{{{{display:grid;grid-template-columns:1fr;gap:14px;}}}}
+        @media(min-width:900px){{{{--grid-2{{{{grid-template-columns:1fr 1fr;}}}} --grid-3{{{{grid-template-columns:1fr 1fr 1fr;}}}}}}}}
+        .anchor{{{{scroll-margin-top:20px;}}}}
+        table{{{{border-collapse: collapse;width: 100%;}}}}
+        th, td{{{{text-align: left;padding: 8px;border-bottom: 1px solid #ddd;}}}}
+        th{{{{background-color: #333;color: white;}}}}
     </style>
 </head>
 <body>
@@ -225,7 +225,7 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
                 const map_data_response = await fetch('/api_idealista/mapa_data.json').then(r => r.json());
                 const all_properties = map_data_response.properties;
 
-                const all_barrios_data = geojson.features.map(f => ({{...f.properties, 'color_del_mapa': '#404040'}}));
+                const all_barrios_data = geojson.features.map(f => ({...f.properties, 'color_del_mapa': '#404040'}));
                 
                 const layout_mapa = {{
                     mapbox_style: 'carto-positron',
@@ -257,7 +257,7 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
                     }}
                 }});
 
-            } catch (error) {{
+            }} catch (error) {{
                 console.error('Error al cargar el mapa:', error);
                 document.getElementById('content').innerHTML = `<p>Error al cargar el mapa. Intente recargar la página.</p>`;
             }}
@@ -310,7 +310,7 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
                 }};
                 Plotly.newPlot('chart-size-distribution', [trace_size], layout_size);
 
-            } catch (error) {{
+            }} catch (error) {{
                 console.error('Error al cargar los datos del barrio:', error);
                 document.getElementById('barrio-data-container').innerHTML = `<p>Error al cargar los datos del barrio. Intente recargar la página.</p>`;
             }}
