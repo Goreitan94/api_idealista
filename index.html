@@ -95,7 +95,7 @@
 
         async function cargarReporte() {
             try {
-                // CORRECCIÓN FINAL: Usar rutas absolutas que incluyen el nombre del repositorio
+                // Corrección final: usar una cadena simple que contenga la URL completa.
                 const [geojson, report_data] = await Promise.all([
                     fetch('/api_idealista/BARRIOS.geojson').then(r => r.json()),
                     fetch('/api_idealista/datos_reporte.json').then(r => r.json())
