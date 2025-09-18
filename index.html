@@ -95,10 +95,10 @@
 
         async function cargarReporte() {
             try {
-                // CORRECCIÓN CLAVE: Usar rutas relativas para los archivos locales
+                // CORRECCIÓN FINAL: Usar rutas absolutas que incluyen el nombre del repositorio
                 const [geojson, report_data] = await Promise.all([
-                    fetch('BARRIOS.geojson').then(r => r.json()),
-                    fetch('datos_reporte.json').then(r => r.json())
+                    fetch('/api_idealista/BARRIOS.geojson').then(r => r.json()),
+                    fetch('/api_idealista/datos_reporte.json').then(r => r.json())
                 ]);
                 
                 const contentDiv = document.getElementById('content');
