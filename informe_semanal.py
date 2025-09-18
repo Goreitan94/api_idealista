@@ -84,15 +84,20 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
         "barrios_data": {}
     }
 
+    if not all_dfs:
+        print("No hay datos para generar el informe.")
+        return
+
     df_all = pd.concat(all_dfs, ignore_index=True)
     
     # Datos para el resumen general
-    m_ppm2 = df_all.groupby("barrio")["price_per_m2"].mean().sort_values(ascending=False).reset_index()
-    report_data["resumen_data"]["price_per_m2"] = m_ppm2.to_dict('records')
+    if not df_all.empty:
+        m_ppm2 = df_all.groupby("barrio_slug")["price_per_m2"].mean().sort_values(ascending=False).reset_index()
+        report_data["resumen_data"]["price_per_m2"] = m_ppm2.to_dict('records')
 
     # Datos para cada barrio
     for barrio_slug in report_data["barrios_unicos"]:
-        df = df_all[df_all["barrio"] == barrio_slug].copy()
+        df = df_all[df_all["barrio_slug"] == barrio_slug].copy()
         if df.empty:
             continue
         
@@ -106,7 +111,10 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
         report_data["barrios_data"][barrio_slug] = barrio_data
 
     # Guarda el JSON con los datos
-    with open("datos_reporte.json", "w", encoding="utf-8") as f:
+    out_folder_pages = os.environ.get("OUTPUT_FOLDER", "output_html")
+    os.makedirs(out_folder_pages, exist_ok=True)
+    json_path = os.path.join(out_folder_pages, "datos_reporte.json")
+    with open(json_path, "w", encoding="utf-8") as f:
         json.dump(report_data, f, ensure_ascii=False, indent=2)
     print("✅ Archivo 'datos_reporte.json' creado.")
 
@@ -157,84 +165,100 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
     <script>
         const PALETTE = ['#6c9ef8', '#ff6b6b', '#ffd166', '#49a844', '#b388ff', '#06d6a0', '#ef476f', '#118ab2'];
         const TEMPLATE = 'plotly_dark';
-        
-        // Función para generar los gráficos
-        function generarGraficos(df, color) {{
-            const df_limpio = df.map(d => ({{...d, 'size': +d.size, 'price': +d.price, 'price_per_m2': +d.price_per_m2, 'rooms': +d.rooms, 'latitude': +d.latitude, 'longitude': +d.longitude}}));
-            const container = document.createElement('div');
-            container.className = 'grid grid-3';
-            
-            // MAPA
-            const mapDiv = document.createElement('div');
-            mapDiv.style = 'grid-column: span 3; border-radius:10px; overflow:hidden;';
-            Plotly.d3.json('https://cdn.jsdelivr.net/gh/Goreitan94/api_idealista@gh-pages/BARRIOS.geojson', function(geojson) {{
-                const barrio_seleccionado = geojson.features.find(f => f.properties.slug === df_limpio[0]?.barrio_slug);
-                const df_mapa = geojson.features.map(f => ({{...f.properties, 'color_del_mapa': '#404040', 'nombre_para_hover': f.properties.nombre}}));
-                let center = {{lat: 40.4168, lon: -3.7038}};
-                let zoom_level = 9.5;
-                if(barrio_seleccionado) {{
-                    const coords = barrio_seleccionado.geometry.coordinates[0][0];
-                    let lat_sum = 0, lon_sum = 0;
-                    coords.forEach(c => {{ lon_sum += c[0]; lat_sum += c[1]; }});
-                    center = {{ lat: lat_sum / coords.length, lon: lon_sum / coords.length }};
-                    df_mapa.find(b => b.slug === barrio_seleccionado.properties.slug).color_del_mapa = color;
-                    zoom_level = 11.5; 
-                }}
-                
-                const layout = {{
-                    mapbox_style: 'carto-positron', mapbox_zoom: zoom_level, mapbox_center: center,
-                    margin: {{r:0,t:0,l:0,b:0}}, showlegend: false, height: 400
-                }};
-                
-                const data = [
-                    {{type: 'choroplethmapbox', geojson: geojson, locations: df_mapa.map(d => d.nombre), z: df_mapa.map(d => d.color_del_mapa === '#404040' ? 0 : 1), colorscale: [['0', '#404040'], ['1', color]]}},
-                    {{type: 'scattermapbox', lat: df_limpio.map(d => d.latitude), lon: df_limpio.map(d => d.longitude), mode: 'markers', marker: {{size: 8, color: PALETTE[3], opacity: 0.7}}, hovertext: df_limpio.map(d => '€' + d.price.toLocaleString() + ' | ' + d.size + ' m²'), hoverinfo: 'text', name: 'Inmuebles'}}
-                ];
-                
-                Plotly.newPlot(mapDiv, data, layout);
-            }});
-            container.appendChild(mapDiv);
 
-            // ... AQUÍ VAN LAS FUNCIONES PARA LOS OTROS GRÁFICOS (HISTOGRAMA, SCATTER, etc.) ...
-            // Tendrás que adaptarlas para que consuman los datos del JSON
+        function fmt_eur(x) {{
+            return '€' + parseFloat(x).toLocaleString('es-ES', {{maximumFractionDigits: 0}});
+        }}
+
+        function generarTablaHtml(data, title, cols_order) {{
+            if (!data || data.length === 0) {{
+                return '';
+            }}
+            const usable = data;
+
+            const headerHtml = cols_order.map(c => `<th>${{c.replace('_', ' ').replace('Url', 'Anuncio').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}}</th>`).join('');
             
-            return container;
-        }
+            const rowsHtml = usable.map(row => {{
+                const cellsHtml = cols_order.map(c => {{
+                    let val = row[c];
+                    if (c === "price") {{
+                        val = fmt_eur(val);
+                    }} else if (c === "price_per_m2") {{
+                        val = `${{fmt_eur(val)}}/m²`;
+                    }} else if (c === "size") {{
+                        val = `${{parseInt(val).toLocaleString('es-ES')}} m²`;
+                    }} else if (c === "url") {{
+                        val = `<a href='${{val}}' target='_blank'>Ver Anuncio</a>`;
+                    }} else {{
+                        val = String(val);
+                    }}
+                    return `<td>${{val}}</td>`;
+                }}).join('');
+                return `<tr>${{cellsHtml}}</tr>`;
+            }}).join('');
+
+            return `
+                <div style="background:transparent; padding:0; margin-bottom:14px;">
+                    <h2 style="font-size:18px; text-align:center; margin:8px 6px 10px;">${{title}}</h2>
+                    <div style="max-height: 400px; overflow-y: auto;">
+                    <table style="width:100%; border-collapse:collapse; text-align:center;">
+                        <thead>
+                            <tr style="background-color:#1a2445; color:white;">${{headerHtml}}</tr>
+                        </thead>
+                        <tbody style="background-color:#121a33; color:white;">
+                            ${{rowsHtml}}
+                        </tbody>
+                    </table>
+                    </div>
+                </div>
+            `;
+        }}
 
         async function cargarReporte() {{
             try {{
-                const geojson = await fetch('https://cdn.jsdelivr.net/gh/Goreitan94/api_idealista@gh-pages/BARRIOS.geojson').then(r => r.json());
-                const report_data = await fetch('datos_reporte.json').then(r => r.json());
+                const [geojson, report_data] = await Promise.all([
+                    fetch('https://cdn.jsdelivr.net/gh/Goreitan94/api_idealista@gh-pages/BARRIOS.geojson').then(r => r.json()),
+                    fetch('datos_reporte.json').then(r => r.json())
+                ]);
+                
                 const contentDiv = document.getElementById('content');
-                contentDiv.innerHTML = `
+                
+                const tocHtml = `
                     <div class="toc">
                         <h3>Navegación</h3>
                         <div style="display:flex;flex-wrap:wrap;gap:10px;">
                             <a href="#resumen" class="pill">Resumen general</a>
-                            ${report_data.barrios_unicos.map(b => `<a href="#${b}" class="pill">${b.replace('-', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</a>`).join('')}
+                            ${{report_data.barrios_unicos.map(b => `<a href="#${{b}}" class="pill">${{b.replace('-', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}}</a>`).join('')}}
                         </div>
-                    </div>
+                    </div>`;
+                
+                const resumenHtml = `
                     <div id="resumen" class="section anchor">
                         <h2>📌 Resumen general</h2>
                         <div id="resumen-chart"></div>
-                    </div>
-                `;
+                    </div>`;
+                
+                contentDiv.innerHTML = tocHtml + resumenHtml;
 
                 // Generar el gráfico de resumen
                 const resumen_df = report_data.resumen_data.price_per_m2;
-                const trace = {{
-                    x: resumen_df.map(d => d.barrio),
-                    y: resumen_df.map(d => d.price_per_m2),
-                    type: 'bar',
-                    marker: {{color: resumen_df.map((d, i) => PALETTE[i % PALETTE.length])}}
-                }};
-                const layout = {{
-                    title: '€/m² medio por barrio',
-                    template: TEMPLATE,
-                    xaxis_title: 'Barrio',
-                    yaxis_title: '€/m²'
-                }};
-                Plotly.newPlot('resumen-chart', [trace], layout);
+                if (resumen_df && resumen_df.length > 0) {{
+                    const trace = {{
+                        x: resumen_df.map(d => d.barrio),
+                        y: resumen_df.map(d => d.price_per_m2),
+                        type: 'bar',
+                        marker: {{color: resumen_df.map((d, i) => PALETTE[i % PALETTE.length])}}
+                    }};
+                    const layout = {{
+                        title: '€/m² medio por barrio',
+                        template: TEMPLATE,
+                        xaxis: {{title: 'Barrio'}},
+                        yaxis: {{title: '€/m²'}}
+                    }};
+                    Plotly.newPlot('resumen-chart', [trace], layout);
+                }}
+
+                const cols_order = ['price', 'size', 'price_per_m2', 'rooms', 'exterior_label', 'lift_label', 'url'];
                 
                 // Generar secciones de barrios
                 report_data.barrios_unicos.forEach((barrio_slug, i) => {{
@@ -245,15 +269,11 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
                     const sectionHtml = document.createElement('div');
                     sectionHtml.id = barrio_slug;
                     sectionHtml.className = 'section anchor';
-                    sectionHtml.innerHTML = `<h2>🏘️ ${barrio_data.nombre}</h2>`;
-                    
-                    const graphsContainer = document.createElement('div');
-                    graphsContainer.className = 'grid grid-3';
+                    sectionHtml.innerHTML = `<h2>🏘️ ${{barrio_data.nombre}}</h2>`;
                     
                     const df_barrio = barrio_data.df;
                     
-                    // Aquí se crean los gráficos de cada barrio
-                    // Por ejemplo, el mapa
+                    // Mapa
                     const mapDiv = document.createElement('div');
                     mapDiv.style = 'grid-column: span 3; border-radius:10px; overflow:hidden; height: 400px;';
                     sectionHtml.appendChild(mapDiv);
@@ -266,11 +286,11 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
                         if (selected_idx !== -1) all_barrios_data[selected_idx].color_del_mapa = color;
                     }}
                     
-                    const layout = {{
+                    const layout_mapa = {{
                         mapbox_style: 'carto-positron',
                         mapbox_zoom: 11,
                         mapbox_center: {{lat: df_barrio[0]?.latitude || 40.4168, lon: df_barrio[0]?.longitude || -3.7038}},
-                        margin: {{r:0,t:0,l:0,b:0}},
+                        margin: {{t:0,b:0,l:0,r:0}},
                         showlegend: false,
                         height: 400
                     }};
@@ -280,12 +300,23 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
                         {{type: 'scattermapbox', lat: df_barrio.map(d => d.latitude), lon: df_barrio.map(d => d.longitude), mode: 'markers', marker: {{size: 8, color: PALETTE[3], opacity: 0.7}}, hovertext: df_barrio.map(d => '€' + d.price.toLocaleString() + ' | ' + d.size + ' m²'), hoverinfo: 'text', name: 'Inmuebles'}}
                     ];
                     
-                    Plotly.newPlot(mapDiv, mapData, layout);
-
-                    // Aquí irían los otros gráficos...
+                    Plotly.newPlot(mapDiv, mapData, layout_mapa);
+                    
+                    // Otros gráficos y tablas
+                    const contentGrid = document.createElement('div');
+                    contentGrid.className = 'grid grid-3';
+                    // Aquí puedes añadir los otros gráficos usando Plotly.newPlot()
+                    
+                    sectionHtml.appendChild(contentGrid);
+                    
+                    const tableGrid = document.createElement('div');
+                    tableGrid.className = 'grid grid-2';
+                    tableGrid.innerHTML = generarTablaHtml(barrio_data.top_baratas, "Top 10 — Más baratas (por €/m²)", cols_order) + generarTablaHtml(barrio_data.top_caras, "Top 10 — Más caras (por €/m²)", cols_order);
+                    sectionHtml.appendChild(tableGrid);
                     
                     contentDiv.appendChild(sectionHtml);
                 }});
+
             }} catch (error) {{
                 console.error('Error al cargar el reporte:', error);
                 document.getElementById('content').innerHTML = `<p>Error al cargar el reporte. Intente recargar la página.</p>`;
@@ -300,13 +331,10 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
 """
     
     # Escribe el HTML final que ahora es muy ligero
-    out_folder_pages = os.environ.get("OUTPUT_FOLDER", "output_html")
-    os.makedirs(out_folder_pages, exist_ok=True)
     out_path_pages = os.path.join(out_folder_pages, "index.html")
     with open(out_path_pages, "w", encoding="utf-8") as f:
         f.write(html_content)
     print(f"✅ Informe final (HTML) guardado en '{out_path_pages}'.")
-    print("✅ Recuerda subir también el archivo 'datos_reporte.json' y 'BARRIOS.geojson' a GitHub Pages.")
     
     return "Informe y datos listos."
 
@@ -327,13 +355,15 @@ def main():
         geojson_gdf['nombre'] = geojson_gdf[nombre_col]
         
         # Guardar el GeoJSON en un archivo JSON aparte para que lo consuma el navegador
-        with open("BARRIOS.geojson", "w", encoding="utf-8") as f:
+        out_folder_pages = os.environ.get("OUTPUT_FOLDER", "output_html")
+        os.makedirs(out_folder_pages, exist_ok=True)
+        geojson_path = os.path.join(out_folder_pages, "BARRIOS.geojson")
+        with open(geojson_path, "w", encoding="utf-8") as f:
             geojson_gdf.to_file(f, driver="GeoJSON")
         print("✅ Archivo GeoJSON de barrios de Madrid guardado para despliegue.")
 
     except Exception as e:
         print(f"❌ Error al cargar o procesar el archivo GeoJSON: {e}")
-        geojson_gdf = None
         return
 
     try:
@@ -390,7 +420,7 @@ def main():
                 df_limpio['barrio'] = barrio_nombre_original
                 df_limpio['barrio_slug'] = barrio_slug
                 
-                barrios.append(barrio_slug)
+                barrios.append(barrio_nombre_original)
                 dfs.append(df_limpio)
             except Exception as e:
                 print(f"⚠️ Error procesando {a['name']}: {e}")
