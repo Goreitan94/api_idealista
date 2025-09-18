@@ -1,0 +1,209 @@
+
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <title>UrbenEye — Informe Interactivo — 2025-09-12</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+    <style>
+        :root{--bg:#0b1020;--card:#121a33;--ink:#e6ecff;--muted:#a8b2d1;--accent:#6c9ef8;}
+        html,body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,Cantarell,'Open Sans','Helvetica Neue',sans-serif;line-height:1.5;}
+        .wrap{max-width:1000px;margin:18px auto;padding:0 18px;}
+        a{color:var(--accent);text-decoration:none;}
+        a:hover{text-decoration:underline;}
+        h1,h2,h3{font-family:'Segoe UI',-apple-system,system-ui,BlinkMacSystemFont,Roboto,Oxygen,Ubuntu,Cantarell,'Open Sans','Helvetica Neue',sans-serif;color:var(--ink);font-weight:700;line-height:1.2;}
+        .hero{margin-bottom:30px;text-align:center;}
+        .hero h1{font-size:32px;margin-bottom:8px;}
+        .sub{color:var(--muted);font-size:14px;}
+        .toc{padding:14px;background:var(--card);border:1px solid rgba(255,255,255,0.06);border-radius:18px;margin-bottom:22px;}
+        .toc h3{font-size:16px;margin:0 0 10px;}
+        .toc a.pill{color:#081229;background:#cfe1ff;border-radius:999px;padding:6px 12px;font-size:13px;text-decoration:none;display:inline-block;}
+        .toc a.pill:hover{background:#9fc9ff;color:#03112a;text-decoration:none;}
+        .section{background:var(--card);border:1px solid rgba(255,255,255,0.06);border-radius:18px;padding:14px;margin:14px 0 22px;}
+        .section > h2{font-size:20px;margin:8px 6px 10px;}
+        .pill{display:inline-block;font-size:12px;color:#081229;background:#cfe1ff;border-radius:999px;padding:2px 10px;margin-left:8px;}
+        .pill a{color:#081229;text-decoration:none;}
+        .pill a:hover{color:#004488;}
+        .grid{display:grid;grid-template-columns:1fr;gap:14px;}
+        @media(min-width:900px){--grid-2{grid-template-columns:1fr 1fr;} --grid-3{grid-template-columns:1fr 1fr 1fr;}}
+        .anchor{scroll-margin-top:20px;}
+        table{border-collapse: collapse;width: 100%;}
+        th, td{text-align: left;padding: 8px;border-bottom: 1px solid #ddd;}
+        th{background-color: #333;color: white;}
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <div class="hero">
+            <h1>📊 UrbenEye — Informe Interactivo — 2025-09-12</h1>
+            <div class="sub">Fuente: Idealista API | Generado Automáticamente</div>
+        </div>
+        <div id="content">Cargando datos...</div>
+    </div>
+    <script>
+        const PALETTE = ['#6c9ef8', '#ff6b6b', '#ffd166', '#49a844', '#b388ff', '#06d6a0', '#ef476f', '#118ab2'];
+        const TEMPLATE = 'plotly_dark';
+
+        function fmt_eur(x) {
+            return '€' + parseFloat(x).toLocaleString('es-ES', {maximumFractionDigits: 0});
+        }
+
+        function generarTablaHtml(data, title, cols_order) {
+            if (!data || data.length === 0) {
+                return '';
+            }
+            const usable = data;
+
+            const headerHtml = cols_order.map(c => `<th>${c.replace('_', ' ').replace('Url', 'Anuncio').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</th>`).join('');
+            
+            const rowsHtml = usable.map(row => {
+                const cellsHtml = cols_order.map(c => {
+                    let val = row[c];
+                    if (c === "price") {
+                        val = fmt_eur(val);
+                    } else if (c === "price_per_m2") {
+                        val = `${fmt_eur(val)}/m²`;
+                    } else if (c === "size") {
+                        val = `${parseInt(val).toLocaleString('es-ES')} m²`;
+                    } else if (c === "url") {
+                        val = `<a href='${val}' target='_blank'>Ver Anuncio</a>`;
+                    } else {
+                        val = String(val);
+                    }
+                    return `<td>${val}</td>`;
+                }).join('');
+                return `<tr>${cellsHtml}</tr>`;
+            }).join('');
+
+            return `
+                <div style="background:transparent; padding:0; margin-bottom:14px;">
+                    <h2 style="font-size:18px; text-align:center; margin:8px 6px 10px;">${title}</h2>
+                    <div style="max-height: 400px; overflow-y: auto;">
+                    <table style="width:100%; border-collapse:collapse; text-align:center;">
+                        <thead>
+                            <tr style="background-color:#1a2445; color:white;">${headerHtml}</tr>
+                        </thead>
+                        <tbody style="background-color:#121a33; color:white;">
+                            ${rowsHtml}
+                        </tbody>
+                    </table>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function cargarReporte() {
+            try {
+                const [geojson, report_data] = await Promise.all([
+                    fetch('https://cdn.jsdelivr.net/gh/Goreitan94/api_idealista@gh-pages/BARRIOS.geojson').then(r => r.json()),
+                    fetch('datos_reporte.json').then(r => r.json())
+                ]);
+                
+                const contentDiv = document.getElementById('content');
+                
+                const tocHtml = `
+                    <div class="toc">
+                        <h3>Navegación</h3>
+                        <div style="display:flex;flex-wrap:wrap;gap:10px;">
+                            <a href="#resumen" class="pill">Resumen general</a>
+                            ${report_data.barrios_unicos.map(b => `<a href="#${b}" class="pill">${b.replace('-', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</a>`).join('')}
+                        </div>
+                    </div>`;
+                
+                const resumenHtml = `
+                    <div id="resumen" class="section anchor">
+                        <h2>📌 Resumen general</h2>
+                        <div id="resumen-chart"></div>
+                    </div>`;
+                
+                contentDiv.innerHTML = tocHtml + resumenHtml;
+
+                // Generar el gráfico de resumen
+                const resumen_df = report_data.resumen_data.price_per_m2;
+                if (resumen_df && resumen_df.length > 0) {
+                    const trace = {
+                        x: resumen_df.map(d => d.barrio),
+                        y: resumen_df.map(d => d.price_per_m2),
+                        type: 'bar',
+                        marker: {color: resumen_df.map((d, i) => PALETTE[i % PALETTE.length])}
+                    };
+                    const layout = {
+                        title: '€/m² medio por barrio',
+                        template: TEMPLATE,
+                        xaxis: {title: 'Barrio'},
+                        yaxis: {title: '€/m²'}
+                    };
+                    Plotly.newPlot('resumen-chart', [trace], layout);
+                }
+
+                const cols_order = ['price', 'size', 'price_per_m2', 'rooms', 'exterior_label', 'lift_label', 'url'];
+                
+                // Generar secciones de barrios
+                report_data.barrios_unicos.forEach((barrio_slug, i) => {
+                    const barrio_data = report_data.barrios_data[barrio_slug];
+                    if (!barrio_data) return;
+                    const color = PALETTE[i % PALETTE.length];
+                    
+                    const sectionHtml = document.createElement('div');
+                    sectionHtml.id = barrio_slug;
+                    sectionHtml.className = 'section anchor';
+                    sectionHtml.innerHTML = `<h2>🏘️ ${barrio_data.nombre}</h2>`;
+                    
+                    const df_barrio = barrio_data.df;
+                    
+                    // Mapa
+                    const mapDiv = document.createElement('div');
+                    mapDiv.style = 'grid-column: span 3; border-radius:10px; overflow:hidden; height: 400px;';
+                    sectionHtml.appendChild(mapDiv);
+                    
+                    const barrio_geojson = geojson.features.find(f => f.properties.slug === barrio_slug);
+                    
+                    const all_barrios_data = geojson.features.map(f => ({...f.properties, 'color_del_mapa': '#404040'}));
+                    if (barrio_geojson) {
+                        const selected_idx = all_barrios_data.findIndex(b => b.slug === barrio_slug);
+                        if (selected_idx !== -1) all_barrios_data[selected_idx].color_del_mapa = color;
+                    }
+                    
+                    const layout_mapa = {
+                        mapbox_style: 'carto-positron',
+                        mapbox_zoom: 11,
+                        mapbox_center: {lat: df_barrio[0]?.latitude || 40.4168, lon: df_barrio[0]?.longitude || -3.7038},
+                        margin: {t:0,b:0,l:0,r:0},
+                        showlegend: false,
+                        height: 400
+                    };
+                    
+                    const mapData = [
+                        {type: 'choroplethmapbox', geojson: geojson, locations: all_barrios_data.map(d => d.nombre), z: all_barrios_data.map(d => d.color_del_mapa === '#404040' ? 0 : 1), colorscale: [['0', '#404040'], ['1', color]]},
+                        {type: 'scattermapbox', lat: df_barrio.map(d => d.latitude), lon: df_barrio.map(d => d.longitude), mode: 'markers', marker: {size: 8, color: PALETTE[3], opacity: 0.7}, hovertext: df_barrio.map(d => '€' + d.price.toLocaleString() + ' | ' + d.size + ' m²'), hoverinfo: 'text', name: 'Inmuebles'}
+                    ];
+                    
+                    Plotly.newPlot(mapDiv, mapData, layout_mapa);
+                    
+                    // Otros gráficos y tablas
+                    const contentGrid = document.createElement('div');
+                    contentGrid.className = 'grid grid-3';
+                    // Aquí puedes añadir los otros gráficos usando Plotly.newPlot()
+                    
+                    sectionHtml.appendChild(contentGrid);
+                    
+                    const tableGrid = document.createElement('div');
+                    tableGrid.className = 'grid grid-2';
+                    tableGrid.innerHTML = generarTablaHtml(barrio_data.top_baratas, "Top 10 — Más baratas (por €/m²)", cols_order) + generarTablaHtml(barrio_data.top_caras, "Top 10 — Más caras (por €/m²)", cols_order);
+                    sectionHtml.appendChild(tableGrid);
+                    
+                    contentDiv.appendChild(sectionHtml);
+                });
+
+            } catch (error) {
+                console.error('Error al cargar el reporte:', error);
+                document.getElementById('content').innerHTML = `<p>Error al cargar el reporte. Intente recargar la página.</p>`;
+            }
+        }
+
+        cargarReporte();
+
+    </script>
+</body>
+</html>
