@@ -216,8 +216,9 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
 
         async function cargarReporte() {{
             try {{
+                // CORRECCIÓN CLAVE: Usar rutas relativas para los archivos locales
                 const [geojson, report_data] = await Promise.all([
-                    fetch('https://cdn.jsdelivr.net/gh/Goreitan94/api_idealista@gh-pages/BARRIOS.geojson').then(r => r.json()),
+                    fetch('BARRIOS.geojson').then(r => r.json()),
                     fetch('datos_reporte.json').then(r => r.json())
                 ]);
                 
@@ -244,7 +245,7 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
                 const resumen_df = report_data.resumen_data.price_per_m2;
                 if (resumen_df && resumen_df.length > 0) {{
                     const trace = {{
-                        x: resumen_df.map(d => d.barrio),
+                        x: resumen_df.map(d => d.barrio_slug),
                         y: resumen_df.map(d => d.price_per_m2),
                         type: 'bar',
                         marker: {{color: resumen_df.map((d, i) => PALETTE[i % PALETTE.length])}}
@@ -364,7 +365,7 @@ def main():
         print("✅ Archivo GeoJSON de barrios de Madrid guardado para despliegue.")
 
     except Exception as e:
-        print(f"❌ Error al cargar o procesar el archivo GeoJSON: {e}")
+        print(f"❌ Ocurrió un error inesperado en el main: {e}")
         return
 
     try:
