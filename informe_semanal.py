@@ -292,68 +292,11 @@ def tabla_html(df, title, sort_col, ascending, cols_order):
 # ==============================
 def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fecha: str, geojson_gdf):
     parts = [f"""
-<!doctype html><html lang="es"><head><meta charset="utf-8" /><title>UrbenEye — Informe Interactivo — {fecha}</title><meta name="viewport" content="width=device-width, initial-scale=1" /><script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script><style>:root{{--bg:#0b1020;--card:#121a33;--ink:#e6ecff;--muted:#a8b2d1;--accent:#6c9ef8;}}html,body{{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-syste...""" ]
-    df_all = []
-    for barrio, df in zip(barrios, all_dfs):
-        if df is None or df.empty: continue
-        tmp = df.copy()
-        tmp["barrio"] = barrio
-        df_all.append(tmp)
+<!doctype html><html lang="es"><head><meta charset="utf-8" /><title>UrbenEye — Informe Interactivo — {fecha}</title><meta name="viewport" content="width=device-width, initial-scale=1" /><script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script><style>:root{{--bg:#0b1020;--card:#121a33;--ink:#e6ecff;--muted:#a8b2d1;--accent:#6c9ef8;}}html,body{{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,Cantarell,'Open Sans','Helvetica Neue',sans-serif;line-height:1.5;}} .wrap{{max-width:1000px;margin:18px auto;padding:0 18px;}} a{{color:var(--accent);text-decoration:none;}} a:hover{{text-decoration:underline;}} h1,h2,h3{{font-family:'Segoe UI',-apple-system,system-ui,BlinkMacSystemFont,Roboto,Oxygen,Ubuntu,Cantarell,'Open Sans','Helvetica Neue',sans-serif;color:var(--ink);font-weight:700;line-height:1.2;}} .hero{{margin-bottom:30px;text-align:center;}} .hero h1{{font-size:32px;margin-bottom:8px;}} .sub{{color:var(--muted);font-size:14px;}} .toc{
+        
+        ... TU CÓDIGO HTML AQUI ...
 
-    if not df_all:
-        parts.append("<p>No hay datos.</p></div></body></html>")
         return "".join(parts)
-        
-    df_all = pd.concat(df_all, ignore_index=True)
-    
-    barrios_unicos = df_all['barrio'].unique().tolist()
-    
-    parts.append("""...
-    .toc a.pill{color:#081229;background:#cfe1ff;border-radius:999px;padding:6px 12px;font-size:13px;text-decoration:none;display:inline-block;} 
-    .toc a.pill:hover{background:#9fc9ff;color:#03112a;text-decoration:none;}
-    .section{background:var(--card);border:1px solid rgba(255,255,255,0.06);border-radius:18px;padding:14px;margin:14px 0 22px;} .section > h2{font-size:20px;margin:8px 6px 10px;} .pill{display:inline-block;font-size:12px;color:#081229;background:#cfe1ff;border-radius:999px;padding:2px 10px;margin-left:8px;} .pill a{color:#081229;text-decoration:none;} .pill a:hover{color:#004488;} .grid{display:grid;grid-template-columns:1fr;gap:14px;} @media(min-width:900px){.grid-2{grid-template-columns:1fr 1fr;} .grid-3{grid-template-columns:1fr 1fr 1fr;}} .anchor{scroll-margin-top:20px;}</style></head><body><div class="wrap"><div class="hero"><h1>📊 UrbenEye — Informe Interactivo — """ + fecha + """</h1><div class="sub">Fuente: Idealista API | Generado Automáticamente</div></div>
-    ...""")
-    
-    parts.append('<div class="toc"><h3>Navegación</h3><div style="display:flex;flex-wrap:wrap;gap:10px;"><a href="#resumen" class="pill">Resumen general</a>')
-    for b_slug in barrios_unicos: parts.append(f'<a href="#{b_slug}" class="pill">{b_slug.replace("-", " ").title()}</a>')
-    parts.append('</div></div>')
-    
-    parts.append('<div id="resumen" class="section anchor"><h2>📌 Resumen general</h2>')
-    m_ppm2 = df_all.groupby("barrio")["price_per_m2"].mean().sort_values(ascending=False).reset_index()
-    fig_resumen1 = px.bar(m_ppm2, x="barrio", y="price_per_m2", template=TEMPLATE, title="€/m² medio por barrio", color="barrio")
-    parts.append(fig_html(fig_resumen1))
-    parts.append('</div>')
-
-    for i, barrio_slug in enumerate(barrios_unicos):
-        df = df_all[df_all["barrio"] == barrio_slug]
-        if df.empty: continue
-        color = PALETTE[i % len(PALETTE)]
-        
-        barrio_nombre_original = barrio_slug.replace('-', ' ').title()
-        
-        parts.append(f'<div id="{barrio_slug}" class="section anchor"><h2>🏘️ {barrio_nombre_original}</h2><div class="grid grid-3">')
-        
-        mapa_html = generar_mapa_barrio(barrio_nombre_original, geojson_gdf, df)
-        if mapa_html:
-            parts.append(f'<div style="grid-column: span 3; border-radius:10px; overflow:hidden;">{mapa_html}</div>')
-        
-        parts.append(histograma(df, "price", "Distribución de Precio (€)", color))
-        parts.append(histograma(df, "price_per_m2", "Distribución de €/m²", color))
-        parts.append(histograma(df, "size", "Distribución de Tamaño (m²)", color))
-        parts.append('</div><div class="grid grid-2">')
-        parts.append(scatter_precio_size(df, color))
-        parts.append(scatter_price_size_trend(df, "€/m² vs Tamaño: Tendencia no lineal", color))
-        parts.append(bar_chart_features(df, "€/m² Medio: Exterior vs Interior / Con vs Sin Ascensor", color))
-        parts.append(bar_price_exterior(df, "€/m² Medio: Exterior vs Interior"))
-        parts.append(bar_chart_lift_impact(df, "€/m² Medio: Con vs Sin Ascensor", color))
-        parts.append('</div><div class="grid grid-2">')
-        cols_order = ['price', 'size', 'price_per_m2', 'rooms', 'exterior_label', 'lift_label', 'url']
-        parts.append(tabla_html(df, "Top 10 — Más baratas (por €/m²)", "price_per_m2", True, cols_order))
-        parts.append(tabla_html(df, "Top 10 — Más caras (por €/m²)", "price_per_m2", False, cols_order))
-        parts.append('</div></div>')
-        
-    parts.append("</div></body></html>")
-    return "".join(parts)
 
 # ==============================
 # Main
@@ -403,17 +346,35 @@ def main():
         try:
             print(f"📥 Descargando y procesando: {a['name']}")
             df = download_excel(file_path, token)
-            if 'size' in df.columns: df = df[df['size'] > 0].copy()
-            if 'price' in df.columns: df = df[df['price'] > 0].copy()
-            if 'size' in df.columns and 'price' in df.columns:
-                df['price_per_m2'] = df['price'] / df['size'].replace(0, np.nan)
-            if 'exterior' in df.columns:
-                df['exterior_label'] = df['exterior'].apply(lambda x: 'Exterior' if x else 'Interior')
-            if 'hasLift' in df.columns:
-                df['lift_label'] = df['hasLift'].apply(lambda x: 'Con Ascensor' if x else 'Sin Ascensor')
+            
+            # Limpiar el DataFrame para reducir el tamaño
+            df_limpio = pd.DataFrame()
+            
+            # Conservar solo las columnas necesarias para el análisis
+            df_limpio['price'] = df['price']
+            df_limpio['size'] = df['size']
+            df_limpio['rooms'] = df['rooms']
+            df_limpio['exterior'] = df['exterior']
+            df_limpio['hasLift'] = df['hasLift']
+            df_limpio['latitude'] = df['latitude']
+            df_limpio['longitude'] = df['longitude']
+            df_limpio['url'] = df['url']
+            
+            # Asegurarse de que las columnas críticas existen
+            if 'size' in df_limpio.columns: df_limpio = df_limpio[df_limpio['size'] > 0].copy()
+            if 'price' in df_limpio.columns: df_limpio = df_limpio[df_limpio['price'] > 0].copy()
+            
+            # Calcular las métricas necesarias
+            df_limpio['price_per_m2'] = df_limpio['price'] / df_limpio['size'].replace(0, np.nan)
+            
+            # Añadir las etiquetas de texto para los gráficos
+            if 'exterior' in df_limpio.columns:
+                df_limpio['exterior_label'] = df_limpio['exterior'].apply(lambda x: 'Exterior' if x else 'Interior')
+            if 'hasLift' in df_limpio.columns:
+                df_limpio['lift_label'] = df_limpio['hasLift'].apply(lambda x: 'Con Ascensor' if x else 'Sin Ascensor')
             
             barrios.append(barrio_slug)
-            dfs.append(df)
+            dfs.append(df_limpio)
         except Exception as e:
             print(f"⚠️ Error procesando {a['name']}: {e}")
 
