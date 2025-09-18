@@ -147,7 +147,7 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
         .pill a{{color:#081229;text-decoration:none;}}
         .pill a:hover{{color:#004488;}}
         .grid{{display:grid;grid-template-columns:1fr;gap:14px;}}
-        @media(min-width:900px){{.grid-2{{grid-template-columns:1fr 1fr;}} .grid-3{{grid-template-columns:1fr 1fr 1fr;}}}}
+        @media(min-width:900px){{--grid-2{{grid-template-columns:1fr 1fr;}} --grid-3{{grid-template-columns:1fr 1fr 1fr;}}}}
         .anchor{{scroll-margin-top:20px;}}
         table{{border-collapse: collapse;width: 100%;}}
         th, td{{text-align: left;padding: 8px;border-bottom: 1px solid #ddd;}}
@@ -358,8 +358,9 @@ def main():
         out_folder_pages = os.environ.get("OUTPUT_FOLDER", "output_html")
         os.makedirs(out_folder_pages, exist_ok=True)
         geojson_path = os.path.join(out_folder_pages, "BARRIOS.geojson")
-        with open(geojson_path, "w", encoding="utf-8") as f:
-            geojson_gdf.to_file(f, driver="GeoJSON")
+        
+        # CORRECCIÓN AQUÍ: Pasar la ruta del archivo directamente a la función to_file
+        geojson_gdf.to_file(geojson_path, driver="GeoJSON")
         print("✅ Archivo GeoJSON de barrios de Madrid guardado para despliegue.")
 
     except Exception as e:
