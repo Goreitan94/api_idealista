@@ -29,7 +29,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pandas numpy openpyxl plotly requests fuzzywuzzy folium python-Levenshtein statsmodels geopandas
+          pip install pandas numpy openpyxl plotly requests geopandas folium
           sudo apt-get update
           sudo apt-get install -y libspatialindex-dev
           
@@ -39,8 +39,6 @@ jobs:
           TENANT_ID: ${{ secrets.TENANT_ID }}
           CLIENT_ID: ${{ secrets.CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
-          IDEALISTA_API_KEY: ${{ secrets.IDEALISTA_API_KEY }}
-          IDEALISTA_SECRET: ${{ secrets.IDEALISTA_SECRET }}
         run: |
           python informe_semanal.py
 
