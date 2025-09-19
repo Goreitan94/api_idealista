@@ -255,7 +255,7 @@ def main():
         print("✅ Token de OneDrive obtenido.")
 
         folders = list_folders(BASE_FOLDER, token)
-        fechas = [f["name"] for f in folders if f.get("folder") and es_fecha(f["name"])]
+        fechas = [f["name"] for f in folders if isinstance(f, dict) and f.get("folder") and es_fecha(f.get("name", ''))]
         if not fechas:
             print("❌ No hay carpetas con formato fecha.")
             return
@@ -264,7 +264,7 @@ def main():
 
         carpeta_path = f"{BASE_FOLDER}/{fecha}"
         archivos = list_folders(carpeta_path, token)
-        archivos_xlsx = [a for a in archivos if a["name"].lower().endswith(".xlsx")]
+        archivos_xlsx = [a for a in archivos if isinstance(a, dict) and a.get("name") and a["name"].lower().endswith(".xlsx")]
         if not archivos_xlsx:
             print(f"❌ No se encontraron archivos Excel en la carpeta {fecha}.")
             return
@@ -318,6 +318,8 @@ def main():
 
     except Exception as e:
         print(f"❌ Ocurrió un error inesperado: {e}")
+        # Intentar imprimir un mensaje de error más específico si es posible
+        print(f"Tipo de error: {type(e).__name__}, Detalles: {e}")
 
 if __name__ == "__main__":
     main()
