@@ -255,7 +255,7 @@ def main():
         print("✅ Token de OneDrive obtenido.")
 
         folders = list_folders(BASE_FOLDER, token)
-        fechas = [f["name"] for f in folders if isinstance(f, dict) and f.get("folder") and es_fecha(f.get("name", ''))]
+        fechas = [f.get("name") for f in folders if isinstance(f, dict) and f.get("folder") and es_fecha(f.get("name", ''))]
         if not fechas:
             print("❌ No hay carpetas con formato fecha.")
             return
