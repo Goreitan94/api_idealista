@@ -28,7 +28,12 @@ PALETTE = px.colors.qualitative.Plotly
 # ==============================
 def get_onedrive_token():
     token_url = f"https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token"
-    data = {{"grant_type": "client_credentials", "client_id": CLIENT_ID, "client_secret": CLIENT_SECRET, "scope": "https://graph.microsoft.com/.default"}}
+    data = {
+        "grant_type": "client_credentials",
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET,
+        "scope": "https://graph.microsoft.com/.default"
+    }
     resp = requests.post(token_url, data=data)
     resp.raise_for_status()
     token_data = resp.json()
@@ -39,14 +44,14 @@ def get_onedrive_token():
 
 def list_folders(path, access_token):
     url = f"https://graph.microsoft.com/v1.0/users/eitang@urbeneye.com/drive/root:{path}:/children"
-    headers = {{"Authorization": f"Bearer {access_token}"}}
+    headers = {"Authorization": f"Bearer {access_token}"}
     resp = requests.get(url, headers=headers)
     resp.raise_for_status()
     return resp.json().get("value", [])
 
 def download_excel(path, access_token):
     url = f"https://graph.microsoft.com/v1.0/users/eitang@urbeneye.com/drive/root:{path}:/content"
-    headers = {{"Authorization": f"Bearer {access_token}"}}
+    headers = {"Authorization": f"Bearer {access_token}"}
     resp = requests.get(url, headers=headers)
     resp.raise_for_status()
     return pd.read_excel(BytesIO(resp.content))
@@ -64,14 +69,15 @@ def es_fecha(nombre: str) -> bool:
 def slugify(text: str) -> str:
     text = text.lower()
     text = unicodedata.normalize('NFKD', text).encode('ascii', 'ignore').decode('utf-8')
+    # la normalización ya elimina la ñ, pero dejamos la sustitución por si acaso
     text = re.sub(r'ñ', 'n', text)
     text = re.sub(r'[\s\W]+', '-', text).strip('-')
     return text
 
 def fmt_eur(x):
     try:
-        return f"€{{x:,.0f}}".replace(",", ".")
-    except:
+        return f"€{x:,.0f}".replace(",", ".")
+    except Exception:
         return ""
 
 # ==============================
@@ -92,7 +98,7 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
     # 1. Generar un JSON con los datos del mapa (todos los puntos)
     map_data = df_all[['latitude', 'longitude', 'price', 'size', 'url', 'barrio_slug']].to_dict('records')
     map_path = out_folder_pages / "mapa_data.json"
-    map_path.write_text(json.dumps({{"properties": map_data}}, ensure_ascii=False, indent=2), encoding="utf-8")
+    map_path.write_text(json.dumps({"properties": map_data}, ensure_ascii=False, indent=2), encoding="utf-8")
     print("✅ Archivo 'mapa_data.json' creado con éxito.")
 
     # 2. Generar un JSON individual para cada barrio
@@ -101,19 +107,20 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
         if df.empty:
             continue
         
-        barrio_data = {{
+        barrio_data = {
             "nombre": barrio_slug.replace('-', ' ').title(),
             "resumen": df["price_per_m2"].mean() if not df.empty else 0,
             "top_caras": df.sort_values("price_per_m2", ascending=False).head(10).to_dict('records'),
             "top_baratas": df.sort_values("price_per_m2", ascending=True).head(10).to_dict('records'),
             "barrio_data": df[['price', 'size', 'rooms', 'exterior_label', 'lift_label', 'price_per_m2', 'url']].to_dict('records')
-        }}
+        }
         
-        json_path = out_folder_pages / "datos_barrios" / f"datos_barrio_{{barrio_slug}}.json"
+        json_path = out_folder_pages / "datos_barrios" / f"datos_barrio_{barrio_slug}.json"
         json_path.write_text(json.dumps(barrio_data, ensure_ascii=False, indent=2), encoding="utf-8")
-        print(f"✅ Archivo '{{json_path}}' creado.")
+        print(f"✅ Archivo '{json_path}' creado.")
 
     # 3. Generar el HTML estático con el nuevo JavaScript
+    # Nota: el contenido JS/CSS usa muchas llaves; las he dejado como cadenas literales para que el HTML final sea igual.
     html_content = f"""
 <!doctype html>
 <html lang="es">
@@ -123,30 +130,30 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
     <style>
-        :root{{{{--bg:#0b1020;--card:#121a33;--ink:#e6ecff;--muted:#a8b2d1;--accent:#6c9ef8;}}}}
-        html,body{{{{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,Cantarell,'Open Sans','Helvetica Neue',sans-serif;line-height:1.5;}}}}
-        .wrap{{{{max-width:1000px;margin:18px auto;padding:0 18px;}}}}
-        a{{{{color:var(--accent);text-decoration:none;}}}}
-        a:hover{{{{text-decoration:underline;}}}}
-        h1,h2,h3{{{{font-family:'Segoe UI',-apple-system,system-ui,BlinkMacSystemFont,Roboto,Oxygen,Ubuntu,Cantarell,'Open Sans','Helvetica Neue',sans-serif;color:var(--ink);font-weight:700;line-height:1.2;}}}}
-        .hero{{{{margin-bottom:30px;text-align:center;}}}}
-        .hero h1{{{{font-size:32px;margin-bottom:8px;}}}}
-        .sub{{{{color:var(--muted);font-size:14px;}}}}
-        .toc{{{{padding:14px;background:var(--card);border:1px solid rgba(255,255,255,0.06);border-radius:18px;margin-bottom:22px;}}}}
-        .toc h3{{{{font-size:16px;margin:0 0 10px;}}}}
-        .toc a.pill{{{{color:#081229;background:#cfe1ff;border-radius:999px;padding:6px 12px;font-size:13px;text-decoration:none;display:inline-block;}}}}
-        .toc a.pill:hover{{{{background:#9fc9ff;color:#03112a;text-decoration:none;}}}}
-        .section{{{{background:var(--card);border:1px solid rgba(255,255,255,0.06);border-radius:18px;padding:14px;margin:14px 0 22px;}}}}
-        .section > h2{{{{font-size:20px;margin:8px 6px 10px;}}}}
-        .pill{{{{display:inline-block;font-size:12px;color:#081229;background:#cfe1ff;border-radius:999px;padding:2px 10px;margin-left:8px;}}}}
-        .pill a{{{{color:#081229;text-decoration:none;}}}}
-        .pill a:hover{{{{color:#004488;}}}}
-        .grid{{{{display:grid;grid-template-columns:1fr;gap:14px;}}}}
-        @media(min-width:900px){{{{--grid-2{{{{grid-template-columns:1fr 1fr;}}}} --grid-3{{{{grid-template-columns:1fr 1fr 1fr;}}}}}}}}
-        .anchor{{{{scroll-margin-top:20px;}}}}
-        table{{{{border-collapse: collapse;width: 100%;}}}}
-        th, td{{{{text-align: left;padding: 8px;border-bottom: 1px solid #ddd;}}}}
-        th{{{{background-color: #333;color: white;}}}}
+        :root{{/*--bg:#0b1020;--card:#121a33;--ink:#e6ecff;--muted:#a8b2d1;--accent:#6c9ef8;*/}}
+        html,body{{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,Cantarell,'Open Sans','Helvetica Neue',sans-serif;line-height:1.5;}}
+        .wrap{{max-width:1000px;margin:18px auto;padding:0 18px;}}
+        a{{color:var(--accent);text-decoration:none;}}
+        a:hover{{text-decoration:underline;}}
+        h1,h2,h3{{font-family:'Segoe UI',-apple-system,system-ui,BlinkMacSystemFont,Roboto,Oxygen,Ubuntu,Cantarell,'Open Sans','Helvetica Neue',sans-serif;color:var(--ink);font-weight:700;line-height:1.2;}}
+        .hero{{margin-bottom:30px;text-align:center;}}
+        .hero h1{{font-size:32px;margin-bottom:8px;}}
+        .sub{{color:var(--muted);font-size:14px;}}
+        .toc{{padding:14px;background:var(--card);border:1px solid rgba(255,255,255,0.06);border-radius:18px;margin-bottom:22px;}}
+        .toc h3{{font-size:16px;margin:0 0 10px;}}
+        .toc a.pill{{color:#081229;background:#cfe1ff;border-radius:999px;padding:6px 12px;font-size:13px;text-decoration:none;display:inline-block;}}
+        .toc a.pill:hover{{background:#9fc9ff;color:#03112a;text-decoration:none;}}
+        .section{{background:var(--card);border:1px solid rgba(255,255,255,0.06);border-radius:18px;padding:14px;margin:14px 0 22px;}}
+        .section > h2{{font-size:20px;margin:8px 6px 10px;}}
+        .pill{{display:inline-block;font-size:12px;color:#081229;background:#cfe1ff;border-radius:999px;padding:2px 10px;margin-left:8px;}}
+        .pill a{{color:#081229;text-decoration:none;}}
+        .pill a:hover{{color:#004488;}}
+        .grid{{display:grid;grid-template-columns:1fr;gap:14px;}}
+        @media(min-width:900px){{/* --grid-2 and --grid-3 placeholders */}}
+        .anchor{{scroll-margin-top:20px;}}
+        table{{border-collapse: collapse;width: 100%;}}
+        th, td{{text-align: left;padding: 8px;border-bottom: 1px solid #ddd;}}
+        th{{background-color: #333;color: white;}}
     </style>
 </head>
 <body>
@@ -225,7 +232,7 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
                 const map_data_response = await fetch('/api_idealista/mapa_data.json').then(r => r.json());
                 const all_properties = map_data_response.properties;
 
-                const all_barrios_data = geojson.features.map(f => ({...f.properties, 'color_del_mapa': '#404040'}));
+                const all_barrios_data = geojson.features.map(f => ({{...f.properties, 'color_del_mapa': '#404040'}}));
                 
                 const layout_mapa = {{
                     mapbox_style: 'carto-positron',
