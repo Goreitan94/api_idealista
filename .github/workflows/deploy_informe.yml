@@ -29,7 +29,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pandas numpy openpyxl plotly requests fuzzywuzzy python-Levenshtein statsmodels geopandas
+          pip install pandas numpy openpyxl plotly requests fuzzywuzzy folium python-Levenshtein statsmodels geopandas
           sudo apt-get update
           sudo apt-get install -y libspatialindex-dev
           
