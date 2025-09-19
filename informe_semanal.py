@@ -225,7 +225,7 @@ def generar_informe_global(all_dfs: list[pd.DataFrame], barrios: list[str], fech
                 const map_data_response = await fetch('/api_idealista/mapa_data.json').then(r => r.json());
                 const all_properties = map_data_response.properties;
 
-                const all_barrios_data = geojson.features.map(f => ({{...f.properties, 'color_del_mapa': '#404040'}}));
+                const all_barrios_data = geojson.features.map(f => ({...f.properties, 'color_del_mapa': '#404040'}));
                 
                 const layout_mapa = {{
                     mapbox_style: 'carto-positron',
@@ -356,7 +356,7 @@ def main():
         print("✅ Archivo GeoJSON de barrios de Madrid guardado para despliegue.")
 
     except Exception as e:
-        print(f"❌ Ocurrió un error inesperado en el main: {e}")
+        print(f"❌ Ocurrió un error inesperado con GeoJSON: {e}")
         return
 
     try:
@@ -378,54 +378,52 @@ def main():
             print(f"❌ No se encontraron archivos Excel en la carpeta {fecha}.")
             return
 
-        barrios, dfs = [], []
+        dfs = []
         for a in sorted(archivos_xlsx, key=lambda x: x['name']):
             barrio_nombre_original = os.path.splitext(a["name"])[0]
-            barrio_slug = slugify(barrio_nombre_original)
             file_path = f"{carpeta_path}/{a['name']}"
             try:
                 print(f"📥 Descargando y procesando: {a['name']}")
                 df = download_excel(file_path, token)
                 
-                df_limpio = pd.DataFrame()
+                # Definir las columnas que deben estar presentes
+                required_cols = ['price', 'size', 'rooms', 'exterior', 'hasLift', 'latitude', 'longitude', 'url']
                 
-                df_limpio['price'] = df['price']
-                df_limpio['size'] = df['size']
-                df_limpio['rooms'] = df['rooms']
-                df_limpio['exterior'] = df['exterior']
-                df_limpio['hasLift'] = df['hasLift']
-                df_limpio['latitude'] = df['latitude']
-                df_limpio['longitude'] = df['longitude']
-                df_limpio['url'] = df['url']
+                # Verificar si el DataFrame tiene todas las columnas requeridas
+                if not all(col in df.columns for col in required_cols):
+                    print(f"⚠️ El archivo {a['name']} no tiene todas las columnas requeridas. Saltando.")
+                    continue
                 
-                if 'size' in df_limpio.columns: df_limpio = df_limpio[df_limpio['size'] > 0].copy()
-                if 'price' in df_limpio.columns: df_limpio = df_limpio[df_limpio['price'] > 0].copy()
+                df_limpio = df[required_cols].copy()
                 
-                df_limpio['price_per_m2'] = df_limpio['price'] / df_limpio['size'].replace(0, np.nan)
+                # Limpieza y cálculos
+                df_limpio = df_limpio[(df_limpio['size'].notna()) & (df_limpio['size'] > 0) & 
+                                      (df_limpio['price'].notna()) & (df_limpio['price'] > 0)].copy()
+
+                if df_limpio.empty:
+                    print(f"⚠️ El archivo {a['name']} está vacío después de la limpieza. Saltando.")
+                    continue
                 
-                if 'exterior' in df_limpio.columns:
-                    df_limpio['exterior_label'] = df_limpio['exterior'].apply(lambda x: 'Exterior' if x else 'Interior')
-                if 'hasLift' in df_limpio.columns:
-                    df_limpio['lift_label'] = df_limpio['hasLift'].apply(lambda x: 'Con Ascensor' if x else 'Sin Ascensor')
-                
+                df_limpio['price_per_m2'] = df_limpio['price'] / df_limpio['size']
+                df_limpio['exterior_label'] = df_limpio['exterior'].apply(lambda x: 'Exterior' if x else 'Interior')
+                df_limpio['lift_label'] = df_limpio['hasLift'].apply(lambda x: 'Con Ascensor' if x else 'Sin Ascensor')
                 df_limpio['barrio'] = barrio_nombre_original
-                df_limpio['barrio_slug'] = barrio_slug
+                df_limpio['barrio_slug'] = slugify(barrio_nombre_original)
                 
-                barrios.append(barrio_nombre_original)
                 dfs.append(df_limpio)
             except Exception as e:
-                print(f"⚠️ Error procesando {a['name']}: {e}")
+                print(f"⚠️ Error inesperado al procesar {a['name']}: {e}")
 
         if not dfs:
             print("❌ No se pudieron procesar los datos.")
             return
 
         print("\n📊 Generando informe HTML y JSON de datos...")
-        generar_informe_global(dfs, barrios, fecha)
-        print(f"✅ Proceso completado. Los archivos 'index.html', 'mapa_data.json' y 'BARRIOS.geojson' están listos para ser subidos, junto con las carpetas de datos de cada barrio.")
+        generar_informe_global(dfs, [], fecha)
+        print(f"✅ Proceso completado. Los archivos están listos para ser subidos.")
 
     except Exception as e:
-        print(f"❌ Ocurrió un error inesperado en el main: {e}")
+        print(f"❌ Ocurrió un error inesperado: {e}")
 
 if __name__ == "__main__":
     main()
