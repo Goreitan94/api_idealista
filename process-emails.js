@@ -130,17 +130,10 @@ async function sendCommercialEmail(token, airtableRecordId) {
       toRecipients: [{
         emailAddress: {
           address: COMMERCIAL_EMAIL
-        }
-      },
-      {
-        emailAddress: {
-          address: TEST_EMAIL
-        }
-      }]
-    }
-  };
+        };
+        
   await axios.post(url, emailContent, { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }});
-  console.log(`Correo enviado a ${COMMERCIAL_EMAIL} y ${TEST_EMAIL} con el enlace al nuevo registro.`);
+  console.log(`Correo enviado a ${COMMERCIAL_EMAIL} con el enlace al nuevo registro.`);
 }
 
 // --- FUNCIÓN ADICIONAL PARA CLIENTES ---
