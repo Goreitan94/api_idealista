@@ -15,7 +15,7 @@ const {
 
 const SENDER_FILTER = "reply@idealista.com";
 const COMMERCIAL_EMAIL = "m.ortiz@apolore.es";
-const TEST_EMAIL = "goreitan94@gmail.com"; 
+
 
 // --- FUNCIÓN PRINCIPAL ---
 async function main() {
@@ -160,7 +160,7 @@ async function sendClientEmail(token, data) {
           <br><br>
           Saludos,
           <br>
-          Equipo UrbenEye
+          Equipo Iceberg Inmobiliaria
         `
       },
       toRecipients: [{
