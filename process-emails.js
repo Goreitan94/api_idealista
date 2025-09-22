@@ -10,11 +10,12 @@ const {
   OUTLOOK_CLIENT_SECRET,
   OUTLOOK_TENANT_ID,
   OUTLOOK_USER_EMAIL,
-  SALES_MANAGEMENT_TABLE_ID 
+  SALES_MANAGEMENT_TABLE_ID
 } = process.env;
 
 const SENDER_FILTER = "reply@idealista.com";
 const COMMERCIAL_EMAIL = "m.ortiz@apolore.es";
+const TEST_EMAIL = "goreitan94@gmail.com"; // <-- Tu correo para pruebas
 
 // --- FUNCIÓN PRINCIPAL ---
 async function main() {
@@ -49,7 +50,7 @@ async function main() {
         console.log(`Registro principal creado con ID: ${newRecordId}`);
         
         // Paso 2: Vincular el registro con la tabla de Sales Management
-        if (parsedData.referencia) {
+        if (parsedData.referencia && parsedData.referencia !== "-") {
           const linkedRecordId = await findLinkedRecordId(parsedData.referencia);
           if (linkedRecordId) {
             await linkRecordsInAirtable(newRecordId, linkedRecordId);
@@ -57,6 +58,8 @@ async function main() {
           } else {
             console.log("No se encontró un registro para vincular con la referencia.");
           }
+        } else {
+            console.log("El correo no tiene una referencia válida. Saltando la vinculación.");
         }
         
         // Paso 3: Enviar el correo al comercial con el enlace al nuevo registro
@@ -127,11 +130,16 @@ async function sendCommercialEmail(token, airtableRecordId) {
         emailAddress: {
           address: COMMERCIAL_EMAIL
         }
+      },
+      {
+        emailAddress: {
+          address: TEST_EMAIL
+        }
       }]
     }
   };
   await axios.post(url, emailContent, { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }});
-  console.log(`Correo enviado a ${COMMERCIAL_EMAIL} con el enlace al nuevo registro.`);
+  console.log(`Correo enviado a ${COMMERCIAL_EMAIL} y ${TEST_EMAIL} con el enlace al nuevo registro.`);
 }
 
 // --- FUNCIÓN ADICIONAL PARA CLIENTES ---
@@ -151,7 +159,7 @@ async function sendClientEmail(token, data) {
           <br><br>
           Saludos,
           <br>
-          Equipo Iceberg Inmobiliaria
+          Equipo UrbenEye
         `
       },
       toRecipients: [{
@@ -175,7 +183,7 @@ function parseEmail(json) {
   let html = json["body"]["content"] || "";
   let subject = json["subject"] || "";
   let text = html.replace(/<[^>]*>/g, "\n").replace(/\n+/g, "\n").trim();
-  let nombre = "", email = "", telefono = "-", referencia = "", enlace = "", mensaje = text;
+  let nombre = "", email = "", telefono = "-", referencia = "-", enlace = "-", mensaje = text;
 
   const potentialMatches = text.match(/[679][\d\s\.\-]{8,}/g);
   if (potentialMatches) {
@@ -205,15 +213,15 @@ function parseEmail(json) {
   }
 
   const matchDireccion = subject.match(/sobre tu inmueble, (.+)$/i);
-  let direccion = matchDireccion ? matchDireccion[1].replace(/con ref: [^,]+,/, "").trim() : "";
+  let direccion = matchDireccion ? matchDireccion[1].replace(/con ref: [^,]+,/, "").trim() : "-";
 
   return {
     nombre_cliente: nombre || "-",
     email_cliente: email || "-",
     telefono: telefono,
-    referencia: referencia || "-",
-    enlace_inmueble: enlace || "-",
-    direccion_inmueble: direccion || "-",
+    referencia: referencia,
+    enlace_inmueble: enlace,
+    direccion_inmueble: direccion,
     mensaje: mensaje
   };
 }
