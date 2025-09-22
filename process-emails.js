@@ -1,4 +1,5 @@
-// app.js
+//app.js
+
 const axios = require('axios');
 
 // --- CONFIGURACIÓN ---
@@ -130,8 +131,11 @@ async function sendCommercialEmail(token, airtableRecordId) {
       toRecipients: [{
         emailAddress: {
           address: COMMERCIAL_EMAIL
-        };
-        
+        }
+      }]
+    }
+  };
+  
   await axios.post(url, emailContent, { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }});
   console.log(`Correo enviado a ${COMMERCIAL_EMAIL} con el enlace al nuevo registro.`);
 }
@@ -245,7 +249,6 @@ async function createAirtableRecord(data) {
 }
 
 async function findLinkedRecordId(referencia) {
-  // Esta es la línea corregida
   const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${SALES_MANAGEMENT_TABLE_ID}?filterByFormula=({Asset ID (from link )} = '${referencia}')`;
   console.log(`DEBUG: Buscando registro en Sales Management en la URL: ${url}`);
   try {
