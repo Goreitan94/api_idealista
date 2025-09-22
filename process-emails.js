@@ -20,6 +20,13 @@ const TEST_EMAIL = "goreitan94@gmail.com"; // <-- Tu correo para pruebas
 // --- FUNCIÓN PRINCIPAL ---
 async function main() {
   console.log("Iniciando la ejecución del script...");
+  
+  // --- AÑADIDOS PARA DEPURACIÓN ---
+  console.log(`DEBUG: Valor de AIRTABLE_BASE_ID: ${AIRTABLE_BASE_ID}`);
+  console.log(`DEBUG: Valor de AIRTABLE_TABLE_ID: ${AIRTABLE_TABLE_ID}`);
+  console.log(`DEBUG: Valor de SALES_MANAGEMENT_TABLE_ID: ${SALES_MANAGEMENT_TABLE_ID}`);
+  console.log(`DEBUG: Valor de AIRTABLE_TOKEN (parcial): ${AIRTABLE_TOKEN ? AIRTABLE_TOKEN.substring(0, 4) + '...' : 'No configurado'}`);
+  // --- FIN DE LA SECCIÓN DEPURACIÓN ---
 
   try {
     const accessToken = await getMicrosoftGraphToken();
@@ -42,14 +49,11 @@ async function main() {
       const parsedData = parseEmail(email);
       console.log("Datos extraídos:", JSON.stringify(parsedData, null, 2));
 
-      // Solo crear el registro si tenemos al menos un email o un teléfono válidos
       if (parsedData.email_cliente !== "-" || parsedData.telefono !== "-") {
         
-        // Paso 1: Crear el registro inicial y obtener su ID
         const newRecordId = await createAirtableRecord(parsedData);
         console.log(`Registro principal creado con ID: ${newRecordId}`);
         
-        // Paso 2: Vincular el registro con la tabla de Sales Management
         if (parsedData.referencia && parsedData.referencia !== "-") {
           const linkedRecordId = await findLinkedRecordId(parsedData.referencia);
           if (linkedRecordId) {
@@ -62,10 +66,8 @@ async function main() {
             console.log("El correo no tiene una referencia válida. Saltando la vinculación.");
         }
         
-        // Paso 3: Enviar el correo al comercial con el enlace al nuevo registro
         await sendCommercialEmail(accessToken, newRecordId);
 
-        // Paso 4: Enviar el correo de agradecimiento al cliente
         if (parsedData.email_cliente && parsedData.email_cliente !== "-") {
           await sendClientEmail(accessToken, parsedData);
         }
@@ -74,7 +76,6 @@ async function main() {
         console.log("No se extrajo información de contacto válida. No se creará registro en Airtable.");
       }
 
-      // Marcar el correo como leído para no procesarlo de nuevo
       await markEmailAsRead(accessToken, email.id);
       console.log(`Correo ${email.id} marcado como leído.`);
     }
@@ -230,6 +231,7 @@ function parseEmail(json) {
 
 async function createAirtableRecord(data) {
   const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_ID}`;
+  console.log(`DEBUG: Creando registro en URL: ${url}`);
   const payload = {
     records: [{
       fields: {
