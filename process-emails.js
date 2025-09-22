@@ -9,10 +9,12 @@ const {
   OUTLOOK_CLIENT_ID,
   OUTLOOK_CLIENT_SECRET,
   OUTLOOK_TENANT_ID,
-  OUTLOOK_USER_EMAIL
+  OUTLOOK_USER_EMAIL,
+  SALES_MANAGEMENT_TABLE_ID 
 } = process.env;
 
 const SENDER_FILTER = "reply@idealista.com";
+const COMMERCIAL_EMAIL = "m.ortiz@apolore.es";
 
 // --- FUNCIÓN PRINCIPAL ---
 async function main() {
@@ -41,7 +43,30 @@ async function main() {
 
       // Solo crear el registro si tenemos al menos un email o un teléfono válidos
       if (parsedData.email_cliente !== "-" || parsedData.telefono !== "-") {
-        await createAirtableRecord(parsedData);
+        
+        // Paso 1: Crear el registro inicial y obtener su ID
+        const newRecordId = await createAirtableRecord(parsedData);
+        console.log(`Registro principal creado con ID: ${newRecordId}`);
+        
+        // Paso 2: Vincular el registro con la tabla de Sales Management
+        if (parsedData.referencia) {
+          const linkedRecordId = await findLinkedRecordId(parsedData.referencia);
+          if (linkedRecordId) {
+            await linkRecordsInAirtable(newRecordId, linkedRecordId);
+            console.log(`Registro principal vinculado con Sales Management ID: ${linkedRecordId}`);
+          } else {
+            console.log("No se encontró un registro para vincular con la referencia.");
+          }
+        }
+        
+        // Paso 3: Enviar el correo al comercial con el enlace al nuevo registro
+        await sendCommercialEmail(accessToken, newRecordId);
+
+        // Paso 4: Enviar el correo de agradecimiento al cliente
+        if (parsedData.email_cliente && parsedData.email_cliente !== "-") {
+          await sendClientEmail(accessToken, parsedData);
+        }
+
       } else {
         console.log("No se extrajo información de contacto válida. No se creará registro en Airtable.");
       }
@@ -88,7 +113,63 @@ async function markEmailAsRead(token, messageId) {
   });
 }
 
-// --- FUNCIÓN DE PARSEO (VERSIÓN FINAL Y ROBUSTA) ---
+async function sendCommercialEmail(token, airtableRecordId) {
+  const recordUrl = `https://airtable.com/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_ID}/${airtableRecordId}`;
+  const url = `https://graph.microsoft.com/v1.0/users/${OUTLOOK_USER_EMAIL}/sendMail`;
+  const emailContent = {
+    message: {
+      subject: "Nuevo Lead de Idealista",
+      body: {
+        contentType: "Html",
+        content: `Se ha creado un nuevo registro en Airtable. <br><br> Haz clic aquí para ver todos los detalles: <a href="${recordUrl}">${recordUrl}</a>`
+      },
+      toRecipients: [{
+        emailAddress: {
+          address: COMMERCIAL_EMAIL
+        }
+      }]
+    }
+  };
+  await axios.post(url, emailContent, { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }});
+  console.log(`Correo enviado a ${COMMERCIAL_EMAIL} con el enlace al nuevo registro.`);
+}
+
+// --- FUNCIÓN ADICIONAL PARA CLIENTES ---
+async function sendClientEmail(token, data) {
+  const url = `https://graph.microsoft.com/v1.0/users/${OUTLOOK_USER_EMAIL}/sendMail`;
+  const emailContent = {
+    message: {
+      subject: "Gracias por tu interés en la propiedad - UrbenEye",
+      body: {
+        contentType: "Html",
+        content: `
+          Hola ${data.nombre_cliente.split(' ')[0]},
+          <br><br>
+          Gracias por tu interés en la propiedad <a href="${data.enlace_inmueble}">${data.direccion_inmueble}</a>.
+          <br><br>
+          En breve, uno de nuestros comerciales se pondrá en contacto contigo para resolver cualquier duda.
+          <br><br>
+          Saludos,
+          <br>
+          Equipo Iceberg Inmobiliaria
+        `
+      },
+      toRecipients: [{
+        emailAddress: {
+          address: data.email_cliente
+        }
+      }]
+    }
+  };
+  try {
+    await axios.post(url, emailContent, { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }});
+    console.log(`Correo de agradecimiento enviado a ${data.email_cliente}.`);
+  } catch (error) {
+    console.error(`Error al enviar correo al cliente ${data.email_cliente}:`, error.message);
+  }
+}
+
+// --- FUNCIÓN DE PARSEO ---
 
 function parseEmail(json) {
   let html = json["body"]["content"] || "";
@@ -96,23 +177,20 @@ function parseEmail(json) {
   let text = html.replace(/<[^>]*>/g, "\n").replace(/\n+/g, "\n").trim();
   let nombre = "", email = "", telefono = "-", referencia = "", enlace = "", mensaje = text;
 
-  // NUEVA LÓGICA: Buscar el teléfono de manera más robusta
   const potentialMatches = text.match(/[679][\d\s\.\-]{8,}/g);
   if (potentialMatches) {
     for (const potential of potentialMatches) {
       const cleanedNumber = potential.replace(/[\s\.\-]/g, '');
       if (cleanedNumber.length === 9) {
         telefono = cleanedNumber;
-        break; // Una vez que encontramos uno válido, salimos
+        break;
       }
     }
   }
 
-  // Expresión para el email
   const matchEmail = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
   if (matchEmail) email = matchEmail[0];
 
-  // La extracción del nombre desde el asunto es la más fiable
   const matchNombre = subject.match(/Nuevo mensaje de (.+?) sobre/i);
   if (matchNombre) {
     nombre = matchNombre[1].trim();
@@ -140,7 +218,8 @@ function parseEmail(json) {
   };
 }
 
-// --- FUNCIÓN DE AIRTABLE ---
+// --- FUNCIONES DE AIRTABLE ---
+
 async function createAirtableRecord(data) {
   const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_ID}`;
   const payload = {
@@ -154,10 +233,39 @@ async function createAirtableRecord(data) {
       }
     }]
   };
-  await axios.post(url, payload, {
+  const response = await axios.post(url, payload, {
     headers: { 'Authorization': `Bearer ${AIRTABLE_TOKEN}`, 'Content-Type': 'application/json' }
   });
   console.log(`Registro creado en Airtable para: ${data.nombre_cliente}`);
+  return response.data.records[0].id;
+}
+
+async function findLinkedRecordId(referencia) {
+  const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${SALES_MANAGEMENT_TABLE_ID}?filterByFormula=({id test } = '${referencia}')`;
+  try {
+    const response = await axios.get(url, {
+      headers: { 'Authorization': `Bearer ${AIRTABLE_TOKEN}` }
+    });
+    if (response.data.records.length > 0) {
+      return response.data.records[0].id;
+    }
+    return null;
+  } catch (error) {
+    console.error("Error buscando registro en Sales Management:", error.message);
+    return null;
+  }
+}
+
+async function linkRecordsInAirtable(mainRecordId, linkedRecordId) {
+  const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_ID}/${mainRecordId}`;
+  const payload = {
+    fields: {
+      "Sales Management": [linkedRecordId]
+    }
+  };
+  await axios.patch(url, payload, {
+    headers: { 'Authorization': `Bearer ${AIRTABLE_TOKEN}`, 'Content-Type': 'application/json' }
+  });
 }
 
 // --- INICIAR EJECUCIÓN ---
