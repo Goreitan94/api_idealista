@@ -241,6 +241,7 @@ async function createAirtableRecord(data) {
       }
     }]
   };
+  console.log(`DEBUG: Creando registro con payload: ${JSON.stringify(payload)}`);
   const response = await axios.post(url, payload, {
     headers: { 'Authorization': `Bearer ${AIRTABLE_TOKEN}`, 'Content-Type': 'application/json' }
   });
@@ -250,16 +251,22 @@ async function createAirtableRecord(data) {
 
 async function findLinkedRecordId(referencia) {
   const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${SALES_MANAGEMENT_TABLE_ID}?filterByFormula=({id test } = '${referencia}')`;
+  console.log(`DEBUG: Buscando registro en Sales Management en la URL: ${url}`);
   try {
     const response = await axios.get(url, {
       headers: { 'Authorization': `Bearer ${AIRTABLE_TOKEN}` }
     });
+    console.log(`DEBUG: Búsqueda exitosa. Registros encontrados: ${response.data.records.length}`);
     if (response.data.records.length > 0) {
+      console.log(`DEBUG: ID del registro encontrado: ${response.data.records[0].id}`);
       return response.data.records[0].id;
     }
     return null;
   } catch (error) {
     console.error("Error buscando registro en Sales Management:", error.message);
+    if (error.response) {
+      console.error("Detalles del error (403):", JSON.stringify(error.response.data, null, 2));
+    }
     return null;
   }
 }
@@ -271,6 +278,7 @@ async function linkRecordsInAirtable(mainRecordId, linkedRecordId) {
       "Sales Management": [linkedRecordId]
     }
   };
+  console.log(`DEBUG: Vinculando registros con URL: ${url} y payload: ${JSON.stringify(payload)}`);
   await axios.patch(url, payload, {
     headers: { 'Authorization': `Bearer ${AIRTABLE_TOKEN}`, 'Content-Type': 'application/json' }
   });
