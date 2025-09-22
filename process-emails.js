@@ -252,7 +252,8 @@ async function createAirtableRecord(data) {
 }
 
 async function findLinkedRecordId(referencia) {
-  const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${SALES_MANAGEMENT_TABLE_ID}?filterByFormula=({Asset ID} = '${referencia}')`;
+  // Esta es la línea corregida
+  const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${SALES_MANAGEMENT_TABLE_ID}?filterByFormula=({Asset ID (from link )} = '${referencia}')`;
   console.log(`DEBUG: Buscando registro en Sales Management en la URL: ${url}`);
   try {
     const response = await axios.get(url, {
