@@ -33,3 +33,5 @@ jobs:
           OUTLOOK_CLIENT_SECRET: ${{ secrets.OUTLOOK_CLIENT_SECRET }}
           OUTLOOK_TENANT_ID: ${{ secrets.OUTLOOK_TENANT_ID }}
           OUTLOOK_USER_EMAIL: ${{ secrets.OUTLOOK_USER_EMAIL }}
+          # ¡AÑADE ESTA LÍNEA!
+          SALES_MANAGEMENT_TABLE_ID: ${{ secrets.SALES_MANAGEMENT_TABLE_ID }}
