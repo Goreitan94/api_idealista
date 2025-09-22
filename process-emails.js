@@ -15,7 +15,7 @@ const {
 
 const SENDER_FILTER = "reply@idealista.com";
 const COMMERCIAL_EMAIL = "m.ortiz@apolore.es";
-const TEST_EMAIL = "goreitan94@gmail.com"; // <-- Tu correo para pruebas
+const TEST_EMAIL = "goreitan94@gmail.com"; 
 
 // --- FUNCIÓN PRINCIPAL ---
 async function main() {
@@ -252,7 +252,7 @@ async function createAirtableRecord(data) {
 }
 
 async function findLinkedRecordId(referencia) {
-  const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${SALES_MANAGEMENT_TABLE_ID}?filterByFormula=({id test } = '${referencia}')`;
+  const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${SALES_MANAGEMENT_TABLE_ID}?filterByFormula=({Asset ID} = '${referencia}')`;
   console.log(`DEBUG: Buscando registro en Sales Management en la URL: ${url}`);
   try {
     const response = await axios.get(url, {
@@ -267,7 +267,7 @@ async function findLinkedRecordId(referencia) {
   } catch (error) {
     console.error("Error buscando registro en Sales Management:", error.message);
     if (error.response) {
-      console.error("Detalles del error (403):", JSON.stringify(error.response.data, null, 2));
+      console.error("Detalles del error (422):", JSON.stringify(error.response.data, null, 2));
     }
     return null;
   }
