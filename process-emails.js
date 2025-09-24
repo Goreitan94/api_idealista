@@ -14,8 +14,15 @@ const {
   SALES_MANAGEMENT_TABLE_ID
 } = process.env;
 
+// Directorio de asignaciones basado en la referencia de la propiedad
+const LEAD_ASSIGNMENTS = {
+  "A66": "jorge.garcia@urbeneye.com",
+  "So2": "eitang@urbeneye.com",
+  "A229": "m.ortiz@apolore.es",
+  "A259": "m.ortiz@apolore.es"
+};
+
 const SENDER_FILTER = "reply@idealista.com";
-const COMMERCIAL_EMAIL = "m.ortiz@apolore.es";
 
 
 // --- FUNCIÓN PRINCIPAL ---
@@ -67,7 +74,14 @@ async function main() {
             console.log("El correo no tiene una referencia válida. Saltando la vinculación.");
         }
         
-        await sendCommercialEmail(accessToken, newRecordId);
+        // Determinar a quién enviar el correo comercial
+        const assigneeEmail = LEAD_ASSIGNMENTS[parsedData.referencia];
+        if (assigneeEmail) {
+            console.log(`DEBUG: Lead asignado a: ${assigneeEmail}`);
+            await sendCommercialEmail(accessToken, newRecordId, assigneeEmail);
+        } else {
+            console.log("No se encontró una asignación de correo para la referencia. El correo comercial no será enviado.");
+        }
 
         if (parsedData.email_cliente && parsedData.email_cliente !== "-") {
           await sendClientEmail(accessToken, parsedData);
@@ -118,7 +132,7 @@ async function markEmailAsRead(token, messageId) {
   });
 }
 
-async function sendCommercialEmail(token, airtableRecordId) {
+async function sendCommercialEmail(token, airtableRecordId, assigneeEmail) {
   const recordUrl = `https://airtable.com/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_ID}/${airtableRecordId}`;
   const url = `https://graph.microsoft.com/v1.0/users/${OUTLOOK_USER_EMAIL}/sendMail`;
   const emailContent = {
@@ -130,14 +144,14 @@ async function sendCommercialEmail(token, airtableRecordId) {
       },
       toRecipients: [{
         emailAddress: {
-          address: COMMERCIAL_EMAIL
+          address: assigneeEmail
         }
       }]
     }
   };
   
   await axios.post(url, emailContent, { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }});
-  console.log(`Correo enviado a ${COMMERCIAL_EMAIL} con el enlace al nuevo registro.`);
+  console.log(`Correo enviado a ${assigneeEmail} con el enlace al nuevo registro.`);
 }
 
 // --- FUNCIÓN ADICIONAL PARA CLIENTES ---
