@@ -28,7 +28,7 @@ const SENDER_FILTER = "reply@idealista.com";
 // --- FUNCIÓN PRINCIPAL ---
 async function main() {
   console.log("Iniciando la ejecución del script...");
-  
+   
   // --- AÑADIDOS PARA DEPURACIÓN ---
   console.log(`DEBUG: Valor de AIRTABLE_BASE_ID: ${AIRTABLE_BASE_ID}`);
   console.log(`DEBUG: Valor de AIRTABLE_TABLE_ID: ${AIRTABLE_TABLE_ID}`);
@@ -58,10 +58,10 @@ async function main() {
       console.log("Datos extraídos:", JSON.stringify(parsedData, null, 2));
 
       if (parsedData.email_cliente !== "-" || parsedData.telefono !== "-") {
-        
+         
         const newRecordId = await createAirtableRecord(parsedData);
         console.log(`Registro principal creado con ID: ${newRecordId}`);
-        
+         
         if (parsedData.referencia && parsedData.referencia !== "-") {
           const linkedRecordId = await findLinkedRecordId(parsedData.referencia);
           if (linkedRecordId) {
@@ -73,7 +73,7 @@ async function main() {
         } else {
             console.log("El correo no tiene una referencia válida. Saltando la vinculación.");
         }
-        
+         
         // Determinar a quién enviar el correo comercial
         const assigneeEmail = LEAD_ASSIGNMENTS[parsedData.referencia];
         if (assigneeEmail) {
@@ -149,7 +149,7 @@ async function sendCommercialEmail(token, airtableRecordId, assigneeEmail) {
       }]
     }
   };
-  
+   
   await axios.post(url, emailContent, { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }});
   console.log(`Correo enviado a ${assigneeEmail} con el enlace al nuevo registro.`);
 }
@@ -241,6 +241,11 @@ function parseEmail(json) {
 // --- FUNCIONES DE AIRTABLE ---
 
 async function createAirtableRecord(data) {
+  // === CORRECCIÓN APLICADA AQUÍ: Limpiar el teléfono para evitar espacios ===
+  // Esto elimina cualquier espacio, punto o guion que pueda haber quedado.
+  const cleanedTelefono = data.telefono.replace(/\s/g, '').replace(/-/g, '').replace(/\./g, '');
+  // =========================================================================
+
   const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_TABLE_ID}`;
   console.log(`DEBUG: Creando registro en URL: ${url}`);
   const payload = {
@@ -248,7 +253,7 @@ async function createAirtableRecord(data) {
       fields: {
         "Lead Nane": data.nombre_cliente,
         "Email": data.email_cliente,
-        "Telefono": data.telefono,
+        "Telefono": cleanedTelefono, // Usamos el valor limpio
         "Mensaje Idealista": data.mensaje,
         "id test ": data.referencia
       }
