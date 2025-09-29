@@ -74,6 +74,10 @@ barrios = {
     "Valdeacederas": "40.466510,-3.701099", 
     "Justicia": "40.422712,-3.699568", 
     "Villaverde": "40.348116,-3.699342", 
+    "Lavapies":"40.409770, -3.702994",
+    "Sol":"40.417461, -3.704713",
+    "Delicias":"40.397673, -3.691717",
+    
 }
 
 # ------------------------------------------------------------------------------
@@ -139,7 +143,7 @@ def search_barrio(barrio, benchmark_df):
         "operation": "sale",
         "propertyType": "homes",
         "center": coords,
-        "distance": "600",
+        "distance": "500",
         "sort": "desc",
         "maxItems": "50",
         "language": "es",
