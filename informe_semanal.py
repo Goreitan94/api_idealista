@@ -260,7 +260,7 @@ def tabla_html(df, title, sort_col, ascending, cols_order):
             if c == "price":
                 val = fmt_eur(val)
             elif c == "price_per_m2":
-                val = f"{fmt_eur(val)}/m²"
+                val = f"{val:,.2f} €/m²".replace(",", "X").replace(".", ",").replace("X", ".") # Formateo a 2 decimales
             elif c == "size":
                 val = f"{int(val):,} m²".replace(",", ".")
             elif c == "url":
@@ -407,6 +407,9 @@ def main():
             if 'price' in df.columns: df = df[df['price'] > 0].copy()
             if 'size' in df.columns and 'price' in df.columns:
                 df['price_per_m2'] = df['price'] / df['size'].replace(0, np.nan)
+                # === APLICACIÓN DEL REDONDEO ===
+                df['price_per_m2'] = df['price_per_m2'].round(2)
+                # ===============================
             if 'exterior' in df.columns:
                 df['exterior_label'] = df['exterior'].apply(lambda x: 'Exterior' if x else 'Interior')
             if 'hasLift' in df.columns:
