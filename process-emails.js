@@ -159,7 +159,7 @@ async function sendClientEmail(token, data) {
   const url = `https://graph.microsoft.com/v1.0/users/${OUTLOOK_USER_EMAIL}/sendMail`;
   const emailContent = {
     message: {
-      subject: "Gracias por tu interés en la propiedad - UrbenEye",
+      subject: "Gracias por tu interés en la propiedad - Iceberg Solutinos",
       body: {
         contentType: "Html",
         content: `
@@ -167,7 +167,10 @@ async function sendClientEmail(token, data) {
           <br><br>
           Gracias por tu interés en la propiedad <a href="${data.enlace_inmueble}">${data.direccion_inmueble}</a>.
           <br><br>
+          Queremos informarte que en Iceberg Solutinos somos los propietarios de la vivienda que has visto en Idealista.
+          <br><br>
           En breve, uno de nuestros comerciales se pondrá en contacto contigo para resolver cualquier duda.
+          Si deseas contactarnos tu puedes llamar a nuestra comercial Mari +34 630 72 97 65.
           <br><br>
           Saludos,
           <br>
